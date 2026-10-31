@@ -1,6 +1,6 @@
 # CRT-fijica
 
-**按物理推导的 RetroArch CRT 着色器，附带可独立替换的边框与场景。**
+**受物理启发的 RetroArch CRT 着色器，附带可独立替换的边框与场景。**
 
 ![2000 年代的客厅：银色"数码超平"电视、电视柜、VCD 和遥控器](docs/screenshots/room-day.jpg)
 
