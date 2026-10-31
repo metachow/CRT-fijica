@@ -1,0 +1,1276 @@
+<meta charset="utf-8">
+<title>CRT Studio — CRT + bezel tuning</title>
+<!--
+  Unified live tuning: the physics CRT AND the decoupled bezel in one page, a
+  faithful WebGL mirror of crt-decoupled-physics.slangp:
+    upload → reconstruct native res → emission (beam+mask+sat) → halation →
+    CRT layer (curve into the shared ScreenRect) → bezel + reflection.
+  Two tabs: CRT (crt-physics/*.slang + dc-crt-physics knobs) and BEZEL
+  (dc-composite knobs). Layout (DC_*) is shared. Tune here, then Export writes
+  every #define + DC_* param at once — no more round-trips in RetroArch.
+-->
+<style>
+  /* metachow design system (claude.ai/artifact/82T2Ly3R2hGM3B1iLDNAdx): paper / ink / hairline, one accent (sky),
+     no gradients or shadows (only the focus ring), near-square corners, 4px grid. The tool UI is dense, so its
+     text runs at the system's caption / data size (13px). Theme: follows the OS, or the header toggle. */
+  :root {
+    --paper:#f6f5f1; --paper-raised:#ffffff; --line:#d9d6cd; --line-strong:#7d848e;
+    --ink:#18202b; --ink-muted:#5a6472; --sky:#1d5ea8; --sky-soft:#dfeaf7; --seal:#b5352a; --on-accent:#ffffff;
+    --focus-ring:0 0 0 2px #f6f5f1, 0 0 0 4px #1d5ea8;
+    --space-1:4px; --space-2:8px; --space-4:16px; --space-8:32px;
+    --radius-sm:2px; --radius-md:4px;
+    --serif:"Source Serif 4","Noto Serif SC","Songti SC",Georgia,serif;
+    --sans:"Inter","Noto Sans SC","PingFang SC","Hiragino Sans",system-ui,sans-serif;
+    --mono:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --paper:#13171d; --paper-raised:#1a1f27; --line:#2c333d; --line-strong:#6b7480;
+    --ink:#e6e8eb; --ink-muted:#9aa3ae; --sky:#7aaee8; --sky-soft:#172a40; --seal:#e8705f; --on-accent:#13171d;
+    --focus-ring:0 0 0 2px #13171d, 0 0 0 4px #7aaee8; color-scheme:dark; } }
+  :root[data-theme="dark"] {
+    --paper:#13171d; --paper-raised:#1a1f27; --line:#2c333d; --line-strong:#6b7480;
+    --ink:#e6e8eb; --ink-muted:#9aa3ae; --sky:#7aaee8; --sky-soft:#172a40; --seal:#e8705f; --on-accent:#13171d;
+    --focus-ring:0 0 0 2px #13171d, 0 0 0 4px #7aaee8; color-scheme:dark; }
+
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:400 13px/20px var(--sans);
+         display:flex; flex-direction:column; overflow:hidden; }
+  button, select, input, textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:none; box-shadow:var(--focus-ring); }
+  button { background:var(--paper-raised); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+           padding:3px 10px; cursor:pointer; white-space:nowrap; line-height:20px; }
+  button:hover { background:var(--sky-soft); }
+  button.primary { background:var(--sky); border-color:var(--sky); color:var(--on-accent); font-weight:600; }
+  button.primary:hover { filter:brightness(1.08); }
+  button.text { border-color:transparent; background:none; color:var(--sky); padding:3px 4px; }
+  button.text:hover { text-decoration:underline; }
+  select { appearance:none; -webkit-appearance:none; border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+           background:var(--paper-raised); padding:3px 26px 3px 8px; cursor:pointer; line-height:20px;
+           background-image:linear-gradient(45deg,transparent 50%,var(--ink-muted) 50%),linear-gradient(135deg,var(--ink-muted) 50%,transparent 50%);
+           background-position:right 12px center,right 8px center; background-size:4px 4px; background-repeat:no-repeat; }
+  kbd { font:400 11px var(--mono); color:var(--ink-muted); border:1px solid var(--line); border-radius:var(--radius-sm); padding:0 var(--space-1); }
+
+  /* check box (replaces the pill switch: corners stay near-square) */
+  .check { display:inline-flex; align-items:center; gap:var(--space-2); color:var(--ink); cursor:pointer; user-select:none; }
+  .check input { position:absolute; opacity:0; pointer-events:none; }
+  .check .box { width:14px; height:14px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:var(--paper-raised);
+                display:inline-flex; align-items:center; justify-content:center; }
+  .check input:checked + .box { background:var(--sky); border-color:var(--sky); }
+  .check input:checked + .box::after { content:""; width:7px; height:4px; border:2px solid var(--on-accent); border-top:0; border-right:0;
+                                      transform:translateY(-1px) rotate(-45deg); }
+  .check input:focus-visible + .box { box-shadow:var(--focus-ring); }
+
+  /* range: hairline track filled with sky to the value (--p), an ink tick at the default (--d), a round dot */
+  input[type=range] { -webkit-appearance:none; appearance:none; background:transparent; cursor:pointer; --p:50%; --d:-10%; }
+  input[type=range]:focus-visible { box-shadow:none; }
+  input[type=range]::-webkit-slider-runnable-track { height:2px;
+    background:linear-gradient(90deg,transparent calc(var(--d) - 1px),var(--ink-muted) calc(var(--d) - 1px),var(--ink-muted) calc(var(--d) + 1px),transparent calc(var(--d) + 1px)),
+               linear-gradient(90deg,var(--sky) var(--p),var(--line) var(--p)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; margin-top:-5px; border-radius:50%;
+    background:var(--paper-raised); border:2px solid var(--sky); }
+  input[type=range]:hover::-webkit-slider-thumb { background:var(--sky); }
+  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow:var(--focus-ring); }
+  input[type=range]::-moz-range-track { height:2px; background:var(--line); }
+  input[type=range]::-moz-range-progress { height:2px; background:var(--sky); }
+  input[type=range]::-moz-range-thumb { width:8px; height:8px; border-radius:50%; background:var(--paper-raised); border:2px solid var(--sky); }
+
+  /* ---- top bar ---- */
+  header { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-2) var(--space-4); border-bottom:1px solid var(--line);
+           background:var(--paper); flex-wrap:wrap; }
+  header h1 { font:600 20px/28px var(--serif); margin:0 var(--space-4) 0 0; }
+  header h1 span { font:400 13px/20px var(--sans); color:var(--ink-muted); margin-left:var(--space-2); }
+  .sep { width:1px; height:20px; background:var(--line); margin:0 var(--space-1); }
+  .spacer { flex:1; }
+  .field { display:inline-flex; align-items:center; gap:var(--space-2); color:var(--ink-muted); }
+
+  /* ---- main: preview | sidebar ---- */
+  main { flex:1; min-height:0; display:flex; }
+  .preview { flex:1; min-width:0; display:flex; flex-direction:column; }
+  .stage { flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; padding:var(--space-4); }
+  /* #c = the output buffer at full resolution (read by the magnifier, shown by 1:1 fullscreen); #view = what the pane
+     shows: the buffer low-passed for its display size, so scanlines / mask don't beat against the screen into moiré */
+  #view { display:block; max-width:100%; max-height:100%; width:auto; height:auto; aspect-ratio:16/9; background:#000; border:1px solid var(--line); cursor:crosshair; }
+  #c { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+  /* fullscreen: show the output buffer at >=1:1 (uniform upscale on wide monitors, exact 1:1 when the
+     monitor matches "out res") so the mask/scanlines never DOWNSCALE -> no preview moiré. */
+  #c:fullscreen { position:static; opacity:1; width:100vw; height:100vh; object-fit:contain; background:#000; }
+  .drop { position:absolute; inset:var(--space-4); border:1px dashed var(--sky); border-radius:var(--radius-md); background:var(--sky-soft);
+          display:none; align-items:center; justify-content:center; font:600 20px/28px var(--sans); color:var(--sky); pointer-events:none; opacity:.92; }
+  .stage.dragging .drop { display:flex; }
+  #mag { position:absolute; width:260px; height:260px; border:2px solid var(--sky); border-radius:var(--radius-md); pointer-events:none;
+         display:none; image-rendering:pixelated; z-index:5; background:#000; }
+  footer { display:flex; gap:var(--space-4); align-items:center; padding:var(--space-1) var(--space-4); color:var(--ink-muted); border-top:1px solid var(--line); }
+  #status.err { color:var(--seal); }          /* the page's one seal: only ever an error */
+  footer .keys { margin-left:auto; display:flex; gap:var(--space-4); }
+
+  aside { flex:0 0 380px; width:380px; min-width:0; display:flex; flex-direction:column; border-left:1px solid var(--line); background:var(--paper); min-height:0; }
+  .sidetop { padding:var(--space-2) var(--space-2) var(--space-2); border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:var(--space-2); }
+  #tabs { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--line-strong); border-radius:var(--radius-sm); overflow:hidden; }
+  #tabs button { border:0; border-radius:0; background:var(--paper-raised); color:var(--ink); padding:3px 0; font-weight:600; }
+  #tabs button + button { border-left:1px solid var(--line-strong); }
+  #tabs button:hover { background:var(--sky-soft); }
+  #tabs button.on { background:var(--sky); color:var(--on-accent); }
+  #tabs button .n { margin-left:var(--space-1); font:400 11px var(--mono); opacity:.8; }
+  #tabs button .n:empty { display:none; }
+  #filter { width:100%; background:var(--paper-raised); border:1px solid var(--line-strong); border-radius:var(--radius-sm); padding:3px var(--space-2); }
+  #filter::placeholder { color:var(--ink-muted); }
+  #groups { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:var(--space-2) var(--space-2) var(--space-8); scrollbar-width:thin; scrollbar-color:var(--line-strong) transparent; }
+
+  details.grp { border:1px solid var(--line); border-radius:var(--radius-md); margin-bottom:var(--space-2); background:var(--paper-raised); }
+  details.grp > summary { list-style:none; cursor:pointer; padding:var(--space-1) var(--space-2); display:flex; align-items:center; gap:var(--space-2); user-select:none; }
+  details.grp > summary::-webkit-details-marker { display:none; }
+  details.grp > summary::before { content:""; width:5px; height:5px; border:solid var(--ink-muted); border-width:0 1.5px 1.5px 0; transform:rotate(-45deg); transition:transform .12s; flex:none; margin:0 2px; }
+  details.grp[open] > summary::before { transform:rotate(45deg); }
+  details.grp[open] > summary { border-bottom:1px solid var(--line); }
+  summary .t { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  summary .badge { font:400 11px/18px var(--mono); color:var(--sky); background:var(--sky-soft); border-radius:var(--radius-sm); padding:0 var(--space-1); white-space:nowrap; flex:none; }
+  summary .badge:empty { display:none; }
+  summary .greset { margin-left:auto; visibility:hidden; padding:0 var(--space-1); line-height:18px; }
+  summary:hover .greset.show { visibility:visible; }
+  .rows { padding:var(--space-1) var(--space-2) var(--space-2); }
+
+  .row { padding:var(--space-1) 0 0; }
+  .row.hidden { display:none; }
+  .rh { display:flex; align-items:center; gap:var(--space-2); min-height:20px; }
+  .rh .name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rh .name[title] { cursor:help; text-decoration:underline dotted var(--line-strong); text-underline-offset:3px; }
+  .rh code { font:400 11px var(--mono); color:var(--ink-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
+  .row.mod .rh .name { color:var(--sky); font-weight:600; }
+  .row.mod .rh .name::before { content:""; display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--sky); margin-right:var(--space-1); vertical-align:2px; }
+  .rh .rst { visibility:hidden; border:0; background:none; color:var(--ink-muted); padding:0 2px; line-height:18px; }
+  .rh .rst:hover { color:var(--sky); background:none; }
+  .row.mod .rh .rst { visibility:visible; }
+  .num { width:68px; flex:0 0 68px; text-align:right; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius-sm);
+         padding:0 var(--space-1); font:400 13px/20px var(--mono); -moz-appearance:textfield; }
+  .num::-webkit-inner-spin-button, .num::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  .num:focus { border-color:var(--sky); }
+  .row input[type=range] { width:100%; margin:var(--space-1) 0 0; height:16px; display:block; }
+  .seg { display:flex; margin-top:var(--space-1); border:1px solid var(--line-strong); border-radius:var(--radius-sm); overflow:hidden; }
+  .seg button { flex:1; border:0; border-radius:0; background:var(--paper-raised); padding:1px 2px; }
+  .seg button + button { border-left:1px solid var(--line-strong); }
+  .seg button.on { background:var(--sky); color:var(--on-accent); }
+
+  /* layer stack (Scene tab) */
+  .lbar { display:flex; gap:var(--space-2); flex-wrap:wrap; margin-bottom:var(--space-2); }
+  .layer { border:1px solid var(--line); border-radius:var(--radius-md); margin:var(--space-2) 0; background:var(--paper); }
+  .layer.tube { background:var(--sky-soft); border-color:var(--sky); }
+  .layer.drag-over { border-color:var(--sky); box-shadow:var(--focus-ring); }
+  .lh { display:flex; align-items:center; gap:var(--space-1); padding:var(--space-1) var(--space-2); cursor:grab; }
+  .lh .grip { color:var(--ink-muted); }
+  .lh .lname { flex:1; min-width:0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .layer.tube .lname { color:var(--sky); text-align:center; }
+  .lh button { padding:0 var(--space-2); line-height:18px; }
+  .lacts { display:flex; gap:var(--space-2); align-items:center; padding:0 var(--space-2) var(--space-1) 22px; }
+  .lacts button { padding:0 var(--space-2); line-height:18px; }
+  .lacts button.has { color:var(--sky); border-color:var(--sky); }
+  .lacts .chip { font:400 11px var(--mono); color:var(--ink-muted); margin-left:auto; }
+  .lbody { padding:0 var(--space-2) var(--space-2); }
+  .layer.hiddenL .lbody, .layer.hiddenL .lname { opacity:.45; }
+  .note { color:var(--ink-muted); margin-top:var(--space-2); }
+
+  /* export / import dialog */
+  #export { position:fixed; inset:0; background:color-mix(in srgb, var(--paper) 80%, transparent); display:none; align-items:center; justify-content:center; z-index:20; padding:var(--space-8); }
+  #export.open { display:flex; }
+  .dlg { width:min(1000px,100%); height:min(88vh,900px); background:var(--paper-raised); border:1px solid var(--line-strong); border-radius:var(--radius-md); display:flex; flex-direction:column; }
+  .dlg header { background:var(--paper-raised); border-radius:var(--radius-md) var(--radius-md) 0 0; }
+  .dlg textarea { flex:1; margin:0; border:0; resize:none; background:var(--paper); color:var(--ink); font:400 13px/20px var(--mono); padding:var(--space-4); }
+  .dlg textarea:focus-visible { box-shadow:inset 0 0 0 2px var(--sky); }
+  .dlg .foot { padding:var(--space-2) var(--space-4); border-top:1px solid var(--line); display:flex; gap:var(--space-2); align-items:center; color:var(--ink-muted); }
+  #expmsg.ok { color:var(--sky); } #expmsg.err { color:var(--seal); }
+  @media (max-width:900px) { main { flex-direction:column; } aside { flex:1 1 50%; width:auto; border-left:0; border-top:1px solid var(--line); } }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400&family=Source+Serif+4:opsz,wght@8..60,600&display=swap">
+
+<header>
+  <h1>CRT Studio<span>CRT · bezel · scene tuning</span></h1>
+  <button id="loadbtn" type="button" title="or drop an image onto the preview">Load screenshot…</button>
+  <input type="file" id="file" accept="image/*" hidden>
+  <label class="check" title="the upload is already native resolution (e.g. a ra-native.py 256×240 PNG): use it as-is, skip the black-bar crop + downsample"><input type="checkbox" id="rawsrc"><span class="box"></span>native source</label>
+  <span class="sep"></span>
+  <label class="field" title="MASK_PITCH is in output px: set this to your RetroArch output resolution or the mask won't match">output
+    <select id="res">
+      <option value="1920x1080">1080p</option>
+      <option value="2560x1440">1440p</option>
+      <option value="3840x2160" selected>2160p (4K)</option>
+    </select>
+  </label>
+  <span class="spacer"></span>
+  <label class="field">theme
+    <select id="theme"><option value="auto">auto</option><option value="light">light</option><option value="dark">dark</option></select>
+  </label>
+  <button id="reset" title="every parameter back to its default (layers are kept)">Reset all</button>
+  <button id="full" title="view the output buffer at 1:1 — matches RetroArch, no downscale moiré (F)">1:1 fullscreen</button>
+  <button id="exp" class="primary" title="every #define + DC_* value, ready to paste — or paste values in to import them (E)">Export / import</button>
+</header>
+
+<main>
+  <section class="preview">
+    <div class="stage" id="stage">
+      <canvas id="view" width="1920" height="1080"></canvas>
+      <canvas id="c" width="3840" height="2160"></canvas>
+      <canvas id="mag" width="260" height="260"></canvas>
+      <div class="drop">Drop a screenshot to load it</div>
+    </div>
+    <footer>
+      <span id="status">Load or drop a game screenshot — showing a colour-bar test pattern.</span>
+      <span class="keys"><span>hover = magnifier</span><span>double-click a slider = default</span><span><kbd>1</kbd>–<kbd>4</kbd> tabs · <kbd>/</kbd> search</span></span>
+    </footer>
+  </section>
+  <aside>
+    <div class="sidetop">
+      <div id="tabs">
+        <button data-tab="layout">Layout<span class="n"></span></button><button data-tab="crt">CRT<span class="n"></span></button><button data-tab="bezel">Bezel<span class="n"></span></button><button data-tab="scene">Scene<span class="n"></span></button>
+      </div>
+      <input id="filter" type="search" placeholder="Search parameters (name or #define)…" autocomplete="off">
+    </div>
+    <div id="groups"></div>
+  </aside>
+</main>
+
+<div id="export">
+  <div class="dlg">
+    <header><h1>Export / import<span>paste the #define block into a decoupled/dc-composite-*.slang wrapper · set DC_* in the RetroArch shader menu</span></h1>
+      <span class="spacer"></span><button id="expclose" class="icon" title="close (Esc)">✕</button></header>
+    <textarea id="exptext" spellcheck="false"></textarea>
+    <div class="foot"><button id="expcopy" class="primary">Copy</button><button id="expsave">Save .txt</button>
+      <span class="spacer"></span><span id="expmsg">To import: paste a wrapper's #defines and/or a preset's DC_* lines here, then</span><button id="expapply">Apply</button></div>
+  </div>
+</div>
+
+<!-- built-in preset background as a base64 data URI (WebGL can't texture a file:// <img>
+     from a file:// page — it taints; a data URI is same-origin so it works). Optional file. -->
+<!-- Duimon Famicom/TM20 preset assets as base64 data URIs (WebGL can't texture a file:// <img>
+     from a file:// page — data URIs are same-origin). Optional; the preset button uses them. -->
+<script src="asset-famicom.js"></script>
+<script src="asset-tm20-bezel.js"></script>
+<script src="asset-tm20-decal.js"></script>
+<script src="asset-xinghui.js"></script>   <!-- XINGHUI room preset, written by art/export_ra.py -->
+<script>
+// ---- parameter table ----
+//   group: ["__g_id", "title", "tab"]          (tab = layout | crt | bezel | scene)
+//   param: [key, "name (DEFINE)", min, max, step, default, options?, tip?]
+//          options = labels for a discrete param (shown as a segmented control, value = index + min)
+const SLIDERS = [
+  ["__g_layout","Screen placement","layout"],
+  ["scale","screen scale (DC_SCALE)",0.30,1.00,0.002,0.72,null,"tube height as a fraction of the output height"],
+  ["posX","position X (DC_POS_X)",0.0,1.0,0.001,0.50],
+  ["posY","position Y (DC_POS_Y)",0.0,1.0,0.001,0.50,null,"measured from the TOP, like RetroArch"],
+  ["aspect","content aspect (DC_ASPECT)",0.50,2.50,0.001,1.333],
+  ["curveX","curvature X (DC_CURVE_X)",0.0,0.40,0.005,0.015,null,"the glass curving across the width: bows the top and bottom edges"],
+  ["curveY","curvature Y (DC_CURVE_Y)",0.0,0.40,0.005,0.025,null,"the glass curving top to bottom: bows the left and right edges"],
+  ["corner","screen corner (DC_CORNER)",0.0,0.10,0.002,0.018],
+
+  ["__g_crtsrc","Source","crt"],
+  ["nativeH","source scanlines",120,320,1,240,null,"native H: lines of the reconstructed frame (width follows the screenshot's aspect)"],
+
+  ["__g_crtbeam","Beam & mask","crt"],
+  ["gammaGun","gun gamma (GAMMA_GUN)",1.8,3.0,0.05,2.25,null,"electron-gun V-I power law: overall contrast"],
+  ["sigmaV","beam σ vertical (SIGMA0)",0.10,0.90,0.01,0.14,null,"spot height at zero current: scanline thickness"],
+  ["scanG","scanline contrast (SCAN_GAMMA)",1.0,3.0,0.05,1.25],
+  ["sigmaH","beam σ horizontal (SIGMA_H)",0.15,1.20,0.01,0.25,null,"horizontal softness / bandwidth"],
+  ["ksc","bloom — space charge k (K_SC)",0.0,2.0,0.05,0.80,null,"how much bright areas fatten"],
+  ["alphaSc","bloom curve α (ALPHA_SC)",0.3,1.0,0.05,0.40],
+  ["kEdge","edge spot elongation (K_EDGE)",0.0,1.0,0.05,0.40],
+  ["maskType","mask type (MASK_TYPE)",0,2,1,0,["aperture grille","slot","dot"]],
+  ["maskPitch","mask pitch, output px (MASK_PITCH)",2.0,8.0,0.5,5.0],
+  ["maskStrength","mask strength (MASK_STR)",0.0,1.0,0.05,0.40],
+  ["esat","saturation knee (E_SAT)",0.5,4.0,0.1,1.50],
+  ["brightness","brightness (BRIGHT)",0.5,3.0,0.05,1.50,null,"emission gain, compensates the mask's light loss"],
+
+  ["__g_crtglass","Glass & geometry","crt"],
+  ["haloWeight","halation weight (HALO_WEIGHT)",0.0,0.30,0.01,0.04,null,"share of the light scattered by the glass"],
+  ["haloSpread","halation spread (HALO_SPREAD)",2.0,24.0,0.5,6.0],
+  ["vignette","vignette (VIGNETTE)",0.0,0.60,0.02,0.12,null,"edge falloff from the deflection angle"],
+  ["dGun","gun distance (D_GUN)",0.8,4.0,0.1,1.5],
+
+  ["__g_size","Shape","bezel"],
+  ["blackW","black edge width (BLACK_EDGE_W)",0.0,0.030,0.001,0.005,null,"all lengths are in tube heights"],
+  ["bzlW","bezel width, top/bottom (BZL_WIDTH)",0.0,0.15,0.001,0.045],
+  ["bzlWX","bezel width, left/right (BZL_WIDTH_X)",0.0,0.15,0.001,0.045],
+  ["frmW","frame width, top/bottom (FRM_WIDTH)",0.0,0.20,0.001,0.055],
+  ["frmWX","frame width, left/right (FRM_WIDTH_X)",0.0,0.20,0.001,0.0825],
+  ["bzlCorner","bezel outer corner (BZL_OUTER_CORNER)",0.0,0.06,0.0002,0.0044],
+  ["frmCorner","frame outer corner (FRM_OUTER_CORNER)",0.0,0.06,0.0002,0.0024],
+
+  ["__g_surface","Material","bezel"],
+  ["bzlHue","hue (BZL_COLOR_HUE)",0.0,360.0,1.0,0.0],
+  ["bzlSat","saturation (BZL_COLOR_SAT)",0.0,100.0,1.0,0.0],
+  ["bzlVal","brightness (BZL_COLOR_VAL)",0.0,1.0,0.01,0.20,null,"colour of a face looking straight at the viewer"],
+  ["noise","surface grain (BZL_NOISE)",0.0,0.50,0.02,0.1],
+  ["bzlGloss","sheen (BZL_GLOSS)",0.0,1.0,0.01,0.20,null,"the light reflected by the plastic: glints on the edges that face it"],
+  ["bzlShine","sheen tightness (BZL_SHINE)",1.0,300.0,1.0,120.0,null,"low = broad satin sheen that also lifts flat faces, high = thin glints on the rounded edges only"],
+
+  ["__g_light","Light","bezel"],
+  ["lightAngle","light direction, deg (LIGHT_ANGLE)",0.0,360.0,1.0,90.0,null,"where the light comes from: 90 = top, 135 = upper left"],
+  ["lightElev","light elevation, deg (LIGHT_ELEV)",5.0,90.0,1.0,60.0],
+  ["ambient","ambient share (AMBIENT)",0.0,1.0,0.01,0.35],
+  ["bzlSlope","bezel slope, deg (BZL_SLOPE)",0.0,70.0,1.0,30.0,null,"tilt of the four bezel faces toward the tube"],
+  ["lightGradX","light falloff → right (LIGHT_GRAD_X)",-0.5,0.5,0.005,0.0,null,"brightness gained per tube height to the right: match the background art's gradient so the frame stays flush with it"],
+  ["lightGradY","light falloff ↑ up (LIGHT_GRAD_Y)",-0.5,0.5,0.005,0.0,null,"brightness gained per tube height upward"],
+
+  ["__g_lip","Rounded edges","bezel"],
+  ["lipW","tube lip width (LIP_WIDTH)",0.0,0.03,0.0005,0.006,null,"the rounded rim between the black gap and the sloped face"],
+  ["lipRoll","tube lip roll, deg (LIP_ROLL)",0.0,90.0,1.0,70.0,null,"how far the lip turns down into the tube"],
+  ["bzlEdgeW","bezel outer edge width (BZL_EDGE_W)",0.0,0.02,0.0005,0.003,null,"the round-over from the sloped face onto the flat frame"],
+  ["frmEdgeW","frame outer edge width (FRM_EDGE_W)",0.0,0.03,0.0005,0.008,null,"the frame's own round-over, away from the tube"],
+  ["frmEdgeRoll","frame outer edge roll, deg (FRM_EDGE_ROLL)",-90.0,90.0,1.0,60.0,null,"> 0: a raised frame rolling away from the tube; < 0: the frame sits in a recess and the housing rises around it"],
+
+  ["__g_seam","Corner seam / miter","bezel"],
+  ["cornerFade","face colour seam softness (CORNER_FADE)",0.0,0.20,0.005,0.010],
+  ["creaseWInner","seam width, tube end (CREASE_W_IN)",0.002,0.06,0.001,0.011],
+  ["creaseWOuter","seam width, outer end (CREASE_W_OUT)",0.002,0.06,0.001,0.002],
+  ["creaseStr","seam valley occlusion (CREASE_STR)",0.0,0.8,0.02,0.0,null,"the miter of a recess is a concave valley: a little darkening reads as sunken"],
+
+  ["__g_frame","Frame","bezel"],
+  ["frmIndep","frame colour (FRM_USE_INDEP_COLOR)",0,1,1,1,["same as bezel","own colour"]],
+  ["frmHue","hue (FRM_COLOR_HUE)",0.0,360.0,1.0,0.0],
+  ["frmSat","saturation (FRM_COLOR_SAT)",0.0,100.0,1.0,0.0],
+  ["frmVal","brightness (FRM_COLOR_VAL)",0.0,1.0,0.01,0.30],
+  ["shadowW","drop shadow on the background (SHADOW_WIDTH)",0.0,0.08,0.005,0.000,null,"RetroArch only — not previewed here"],
+
+  ["__g_bg","Black edge / backdrop","bezel"],
+  ["bgBase","background (BG_BASE)",0.0,0.10,0.005,0.01,null,"what shows beyond the frame when no background image is on"],
+  ["blackVal","black edge value (BLACK_EDGE_VAL)",0.0,0.08,0.002,0.006],
+
+  ["__g_refl","Screen reflection on the bezel","bezel"],
+  ["reflOn","reflection",0,1,1,1,["off","on"]],
+  ["reflStr","strength (REFL_STR)",0.0,1.0,0.02,0.26],
+  ["reflFalloff","fade distance (REFL_FALLOFF)",0.005,0.20,0.001,0.042],
+  ["reflBlur","blur growth (REFL_BLUR)",0.0,2.0,0.05,0.55],
+  ["reflCorner","extra along the seams (REFL_CORNER)",0.0,3.0,0.1,0.30],
+
+  ["__g_light_room","Room light & TV spill","scene"],
+  ["roomLight","room light (DC_ROOM_LIGHT)",0.0,1.0,0.01,1.0,null,"0 = lights off · 0.5 = a lamp · 1 = daylight"],
+  ["roomType","light source (DC_ROOM_TYPE)",0,3,1,0,["custom K","bulb","fluorescent","daylight"]],
+  ["roomTemp","custom colour temp, K (DC_ROOM_TEMP)",2000,10000,100,6500,null,"used when the source is 'custom K'"],
+  ["spill","TV light spill (DC_SPILL)",0.0,2.0,0.05,0.5,null,"how much the picture lights its surroundings"],
+  ["glassLift","room light on the glass (DC_GLASS_LIFT)",0.0,1.0,0.05,0.3],
+  ["bgSpillGain","TV light on the room art × (BG_SPILL_GAIN)",0.0,12.0,0.1,5.0,null,"scales the background layer's SpillMask"],
+
+  ["__g_gloss","Glossy cabinet top","scene"],
+  ["glossStr","reflectance (GLOSS_STR)",0.0,1.0,0.01,0.0,null,"where: the G channel of the SpillMask"],
+  ["glossMirrorY","mirror line, from top (GLOSS_MIRROR_Y)",0.0,1.0,0.001,0.87],
+  ["glossStretch","view cheat, 1 = true geometry (GLOSS_STRETCH)",1.0,6.0,0.1,1.0],
+  ["glossBlur","roughness (GLOSS_BLUR)",0.0,0.6,0.01,0.15],
+];
+const DEF = {}; for(const s of SLIDERS){ if(!s[0].startsWith("__")) DEF[s[0]]=s[5]; }
+const P = { ...DEF };
+
+const gl = document.getElementById('c').getContext('webgl2',{preserveDrawingBuffer:true,antialias:false});
+const status = document.getElementById('status');
+if(!gl){ status.textContent='WebGL2 not available'; throw new Error('no webgl2'); }
+
+const VS = `#version 300 es
+void main(){ vec2 p=vec2((gl_VertexID<<1)&2, gl_VertexID&2); gl_Position=vec4(p*2.0-1.0,0,1); }`;
+
+const FS = `#version 300 es
+precision highp float;
+out vec4 FragColor;
+uniform vec2 uRes;
+uniform sampler2D uCRT;   // = CRT LAYER (physics CRT curved into the ScreenRect), viewport-space
+uniform float uScale,uPosX,uPosY,uAspect,uCurveX,uCurveY,uCorner;
+uniform float uBlackW,uBzlW,uBzlWX,uFrmW,uFrmWX,uBzlCorner,uFrmCorner;
+uniform float uBzlHue,uBzlSat,uBzlVal,uNoise,uBzlGloss,uBzlShine,uLightAngle,uLightElev,uAmbient,uBzlSlope,uLightGradX,uLightGradY;
+uniform float uLipW,uLipRoll,uBzlEdgeW,uFrmEdgeW,uFrmEdgeRoll;
+uniform float uCornerFade,uCreaseWInner,uCreaseWOuter,uCreaseStr;
+uniform float uFrmIndep,uFrmHue,uFrmSat,uFrmVal,uShadowW;
+uniform float uBlackVal,uBgBase,uReflOn,uReflStr,uReflFalloff,uReflBlur,uReflCorner;
+uniform vec2 uSeamA;   // curved tube corner on the flat bezel plane (H units) = dc_uncurve(1,1), computed in JS
+uniform sampler2D uRoomMask; uniform float uHasRoomMask, uBgSpillGain;   // = RA SpillMask (the masked image layer)
+uniform float uHasBg;    // = RA DC_BG_ON: an image layer sits below the tube (else the procedural BG_BASE)
+
+struct ScreenRect { vec2 center; vec2 half_size; float aspect; vec2 curvature; float corner; };
+ScreenRect dc_get_rect(float oa){ ScreenRect r; r.aspect=uAspect; r.curvature=vec2(uCurveX,uCurveY); r.corner=uCorner;
+  // POS_Y measured from the TOP to match RetroArch's vTexCoord convention (web gl_FragCoord.y
+  // is bottom-up, so flip here — keeps DC_POS_Y identical between the web tool and RA).
+  r.half_size.y=0.5*uScale; r.half_size.x=r.half_size.y*r.aspect/oa; r.center=vec2(uPosX,1.0-uPosY); return r; }
+// curved faceplate (= dc-screen-layout.inc dc_curve / dc_uncurve): a sphere patch, raster even in deflection angle
+vec2 dc_curve_s2(vec2 k){ return 10.0*k/(1.0+5.0*k); }
+vec2 dc_curve(vec2 uv, vec2 k){ vec2 s2=dc_curve_s2(k), c=uv-0.5; float z=sqrt(max(1.0-dot(s2,c*c),1e-4));
+  vec2 te=0.5/sqrt(1.0-0.25*s2); return 0.5+0.5*(c/z)/te; }
+vec2 dc_vp_to_screen(vec2 vp, ScreenRect r, out float inside){
+  vec2 p=(vp-r.center)/r.half_size; vec2 uv=p*0.5+0.5;
+  vec2 cuv=dc_curve(uv, r.curvature);
+  inside=(cuv.x>=0.0&&cuv.x<=1.0&&cuv.y>=0.0&&cuv.y<=1.0)?1.0:0.0; return cuv; }
+float dc_corner_mask(vec2 sp,float aspect,float corner,float sharp){
+  vec2 p=abs(sp*2.0-1.0); p.x*=aspect; vec2 d=p-(vec2(aspect,1.0)-corner);
+  float sd=length(max(d,vec2(0.0)))+min(max(d.x,d.y),0.0)-corner; return 1.0-smoothstep(-sharp,sharp,sd); }
+
+// ---- scene light (mirror of dc-screen-layout.inc) ----
+uniform float uRoomLight,uRoomTemp,uRoomType,uSpill,uGlassLift;
+vec3 dc_s2l(vec3 c){ c=max(c,vec3(0.0)); return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),vec3(greaterThan(c,vec3(0.04045)))); }
+vec3 dc_l2s(vec3 c){ c=max(c,vec3(0.0)); return mix(c*12.92,1.055*pow(c,vec3(1.0/2.4))-0.055,vec3(greaterThan(c,vec3(0.0031308)))); }
+vec3 dc_kelvin(float K){ float t=clamp(K,1000.0,40000.0)/100.0;
+  float r=(t<=66.0)?255.0:329.698727446*pow(t-60.0,-0.1332047592);
+  float g=(t<=66.0)?99.4708025861*log(t)-161.1195681661:288.1221695283*pow(t-60.0,-0.0755148492);
+  float b=(t>=66.0)?255.0:((t<=19.0)?0.0:138.5177312231*log(t-10.0)-305.0447927307);
+  return clamp(vec3(r,g,b)/255.0,0.0,1.0); }
+vec3 dc_room_rgb(){ float x=clamp(uRoomLight,0.0,1.0); float K=uRoomTemp; vec3 shift=vec3(1.0); int type=int(uRoomType+0.5);
+  if(type==1) K=2700.0; if(type==2){ K=6000.0; shift=vec3(0.90,1.0,0.93); } if(type==3) K=6500.0;
+  return x*x*sqrt(dc_s2l(dc_kelvin(K))/dc_s2l(dc_kelvin(6500.0)))*shift; }
+vec3 dc_light(vec3 c, vec3 extra){ return dc_l2s(dc_s2l(c)*(dc_room_rgb()+extra)); }
+// ===== mirror of decoupled/dc-composite.inc (bezel_layer / reflection_layer) — change both together =====
+const float Y_UP = 1.0;   // gl_FragCoord.y grows UPWARD here (RetroArch: -1)
+vec3 hsv2rgb(vec3 c){ vec4 K=vec4(1.0,2.0/3.0,1.0/3.0,3.0);
+  vec3 p=abs(fract(c.xxx+K.xyz)*6.0-K.www); return c.z*mix(K.xxx,clamp(p-K.xxx,0.0,1.0),c.y); }
+float hash21(vec2 p){ p=fract(p*vec2(123.34,345.45)); p+=dot(p,p+34.345); return fract(p.x*p.y); }
+float sd_rrect(vec2 q, vec2 b, float rad){ vec2 d=q-(b-rad); return length(max(d,vec2(0.0)))+min(max(d.x,d.y),0.0)-rad; }
+float coverage(float sd, float px){ return clamp(0.5-sd/px,0.0,1.0); }
+vec3 light_dir(){ float az=radians(uLightAngle), el=radians(uLightElev); return vec3(cos(az)*cos(el), sin(az)*cos(el), sin(el)); }
+float face_shade(vec3 n){ vec3 L=light_dir(); return uAmbient+(1.0-uAmbient)*max(dot(n,L),0.0)/max(L.z,0.05); }
+float face_gloss(vec3 n){ vec3 h=normalize(light_dir()+vec3(0.0,0.0,1.0)); return uBzlGloss*pow(max(dot(n,h),0.0),uBzlShine); }
+vec3 tilt(vec2 o, float ang){ return vec3(o*sin(radians(ang)), cos(radians(ang))); }
+vec2 rrect_dir(vec2 q, vec2 b, float rad){ vec2 d=q-(b-rad); if(d.x>0.0&&d.y>0.0) return normalize(d); return (d.x>d.y)?vec2(1.0,0.0):vec2(0.0,1.0); }
+vec3 lit_plastic(vec3 c, vec3 extra, float gloss){ vec3 room=dc_room_rgb(); return dc_l2s(max(dc_s2l(c)*(room+extra)+gloss*room,0.0)); }
+vec3 spill_colour(vec2 vp, ScreenRect r){
+  if(uSpill<=0.0) return vec3(0.0);
+  float tube_px=2.0*r.half_size.y*uRes.y;
+  vec2 p=(vp-r.center)/r.half_size;
+  vec3 near_c=textureLod(uCRT, r.center+clamp(p,-0.8,0.8)*r.half_size, log2(max(0.25*tube_px,1.0))).rgb;
+  vec3 whole_c=textureLod(uCRT, r.center, log2(max(tube_px,1.0))).rgb*1.6;
+  return uSpill*1.5*dc_s2l(0.5*near_c+0.5*whole_c); }
+vec3 reflection_layer(vec2 vp, ScreenRect r, float dob, float crease, float band, float px){
+  if(dob<=0.0||band<=0.001) return vec3(0.0);
+  vec2 p=(vp-r.center)/r.half_size; vec2 cl=clamp(p,-1.0,1.0); vec2 mir=cl-(p-cl);
+  float blur=0.02+dob*uReflBlur; float rot=hash21(vp)*6.2831853;
+  const int TAPS=56; const float GA=2.39996323;
+  vec3 refl=vec3(0.0); float wsum=0.0;
+  for(int k=0;k<TAPS;k++){ float t=(float(k)+0.5)/float(TAPS); float rr=sqrt(t)*blur; float ang=float(k)*GA+rot;
+    vec2 mc=clamp(mir+vec2(cos(ang),sin(ang))*rr,-1.0,1.0); float wgt=exp(-2.2*t);
+    refl+=textureLod(uCRT, r.center+mc*r.half_size, 0.0).rgb*wgt; wsum+=wgt; }
+  refl/=wsum;
+  float fall=exp(-dob/uReflFalloff); float onset=smoothstep(0.0,6.0*px,dob);
+  return refl*(fall+crease*uReflCorner)*onset*band*uReflStr; }
+vec4 bezel_layer(vec2 vp, ScreenRect r)
+{
+    float aspect = r.aspect;
+    float px = (1.0/uRes.y) / (2.0 * r.half_size.y);          // one output pixel, in H
+    float ins; vec2 sp = dc_vp_to_screen(vp, r, ins);
+    vec2 tcc = sp - 0.5;                                             // curved, [-0.5,0.5]
+    vec2 flat_tcc = (vp - r.center) / r.half_size * 0.5;             // flat,   [-0.5,0.5]
+    vec2 gc = abs(tcc)*vec2(aspect, 1.0);                            // curved, H units
+    vec2 gf = abs(flat_tcc)*vec2(aspect, 1.0);                       // flat,   H units
+    vec2 sgn = vec2(flat_tcc.x < 0.0 ? -1.0 : 1.0, flat_tcc.y*Y_UP < 0.0 ? -1.0 : 1.0);   // quadrant, y up
+
+    // ---- distances (H): curved tube edge, flat bezel outer, flat frame outer ----
+    vec2  tube_half = vec2(0.5*aspect, 0.5);
+    float sd_tube  = sd_rrect(gc, tube_half, r.corner*0.5);
+    vec2  bzl_half = tube_half + vec2(uBzlWX, uBzlW);
+    vec2  frm_half = bzl_half + vec2(uFrmWX, uFrmW);
+    float sd_bezel = sd_rrect(gf, bzl_half, uBzlCorner);
+    float sd_frame = sd_rrect(gf, frm_half, uFrmCorner);
+    float dob = sd_tube - uBlackW;                              // 0 at the black edge, + into the bezel
+    float OUTSIDE_TUBE_EDGE = smoothstep(-1.5*px, 1.5*px, dob);
+    float IN_BEZEL = coverage(sd_bezel, px);
+    float IN_FRAME = coverage(sd_frame, px);
+
+    // ---- the four faces, split by the straight miter seam A -> B ----
+    vec2  uSeamAB  = bzl_half - uSeamA; float segL = max(length(uSeamAB), 1e-4); vec2 segDir = uSeamAB/segL;
+    vec2  segRel = gf - uSeamA;
+    float across = segDir.x*segRel.y - segDir.y*segRel.x;            // > 0: top/bottom face side
+    float seam_t = clamp(dot(segRel, segDir)/segL, 0.0, 1.0);        // 0 inner -> 1 outer
+    float seam_w = mix(uCreaseWInner, uCreaseWOuter, seam_t);
+    float crease = exp(-pow(abs(across)/max(seam_w, 1e-4), 2.0)) * IN_BEZEL;
+    float tb   = smoothstep(-uCornerFade, uCornerFade, across);
+    float up   = smoothstep(-0.006, 0.006, flat_tcc.y*Y_UP);
+    float left = smoothstep(0.006, -0.006, flat_tcc.x);
+    // each face's outward direction (away from the tube); the surface itself tilts the other way, into the tube
+    vec2 o_tb = vec2(0.0, mix(-1.0, 1.0, up)), o_sd = vec2(mix(1.0, -1.0, left), 0.0);
+
+    // ---- the profile's slope, from the tube outward: the lip rolls from uLipRoll (looking into the tube) up to
+    //      the face's uBzlSlope, the face keeps it, the outer edge rounds it over to flat (0) onto the frame ----
+    float t_lip  = clamp(dob / max(uLipW, 1e-4), 0.0, 1.0);
+    float t_edge = clamp(-sd_bezel / max(uBzlEdgeW, 1e-4), 0.0, 1.0);          // 0 at the bezel's outer edge
+    float slope  = mix(uLipRoll, uBzlSlope, sin(1.5707963*t_lip)) * smoothstep(0.0, 1.0, t_edge);
+    // the lip hugs the tube's rounded corner: near the tube use the tube's own facing, further out the faces'
+    vec2  o_lip  = rrect_dir(gc, tube_half, r.corner*0.5) * sgn;
+    float lipw   = 1.0 - smoothstep(0.5, 1.0, t_lip);
+    vec3  n_tb = tilt(-normalize(mix(o_tb, o_lip, lipw) + 1e-6), slope);
+    vec3  n_sd = tilt(-normalize(mix(o_sd, o_lip, lipw) + 1e-6), slope);
+    float shade = tb*face_shade(n_tb) + (1.0 - tb)*face_shade(n_sd);
+    float gloss = tb*face_gloss(n_tb) + (1.0 - tb)*face_gloss(n_sd);
+    // the miter is a small concave fillet: lit like the normal halfway between the two faces it joins
+    vec3  n_fil = normalize(n_tb + n_sd);
+    shade = mix(shade, face_shade(n_fil), crease) * (1.0 - uCreaseStr*crease);
+    gloss = mix(gloss, face_gloss(n_fil), crease);
+
+    // ---- colours: the plastic face-on, a moulded grain, the room light's falloff across the set ----
+    float grain = hash21(floor(vp * uRes)) - 0.5;
+    vec3  base  = hsv2rgb(vec3(uBzlHue/360.0, uBzlSat/100.0, uBzlVal));
+    float lgrad = max(1.0 + uLightGradX*flat_tcc.x*aspect + uLightGradY*flat_tcc.y*Y_UP, 0.0);
+    vec3  bezel_diffuse = base * (1.0 + uNoise*grain) * shade * lgrad;
+
+    // ---- scene light: the room light + the TV's spill. The sloped bezel faces the tube and catches it directly;
+    //      the flat frame lies in the screen's plane (the picture only shines forward), so like the housing art
+    //      around it, it only gets what the background's SpillMask says (room bounce; none without a mask). ----
+    vec3 spill_c = spill_colour(vp, r);
+    vec3 spill = spill_c / (1.0 + pow(max(dob, 0.0) / 0.05, 2.0));
+    vec3 flat_spill = (uHasRoomMask > 0.5) ? texture(uRoomMask, vp).r * uBgSpillGain * spill_c : vec3(0.0);
+    vec3 bezel_color = lit_plastic(bezel_diffuse, spill, gloss * lgrad);
+
+    // ---- the picture's mirror image in the bezel, screen-blended (weaker on light plastic, as on real sets) ----
+    if (uReflOn > 0.5) { vec3 refl = reflection_layer(vp, r, dob, crease, IN_BEZEL, px);
+                         bezel_color += refl * (1.0 - clamp(bezel_color, 0.0, 1.0)); }
+
+    // ---- frame: flat, then its outer edge turns away from the tube by up to uFrmEdgeRoll ----
+    vec3  frm_base = (uFrmIndep > 0.5) ? hsv2rgb(vec3(uFrmHue/360.0, uFrmSat/100.0, uFrmVal)) : base;
+    float t_frm = clamp(-sd_frame / max(uFrmEdgeW, 1e-4), 0.0, 1.0);           // 0 at the frame's outer edge
+    vec3  n_frm = tilt(rrect_dir(gf, frm_half, uFrmCorner) * sgn, uFrmEdgeRoll * (1.0 - sin(1.5707963*t_frm)));
+    vec3  frame_color = lit_plastic(frm_base * (1.0 + 0.6*uNoise*grain) * face_shade(n_frm) * lgrad, flat_spill,
+                                    face_gloss(n_frm) * lgrad);
+
+    // ---- composite: tube black edge -> bezel -> flat frame -> background ----
+    vec3 col = dc_light(vec3(uBlackVal), spill);
+    col = mix(col, bezel_color, OUTSIDE_TUBE_EDGE);
+    col = mix(col, frame_color, 1.0 - IN_BEZEL);
+
+    float frame_shadow = (uShadowW > 0.0) ? pow(1.0 - smoothstep(0.0, uShadowW, max(sd_frame, 0.0)), 2.0) : 0.0;
+    if (uHasBg < 0.5) {                        // no background art: RA's procedural backdrop, under the room light
+        vec3 bg = vec3(uBgBase) * (0.80 + 0.4*(1.0 - length(vp - r.center)));
+        bg = dc_light(bg * (1.0 - 0.6*frame_shadow), vec3(0.0));
+        return vec4(mix(col, bg, 1.0 - IN_FRAME), 1.0);
+    }
+    // the background is separate image layers here: PREMULTIPLIED colour + coverage; beyond the frame only its
+    // drop shadow (black, = RA's bg *= 1 - 0.6*frame_shadow) is laid over the layers below
+    return vec4(col*IN_FRAME, IN_FRAME + (1.0 - IN_FRAME)*0.6*frame_shadow);
+}
+void main(){
+  vec2 vp=gl_FragCoord.xy/uRes; float oa=uRes.x/uRes.y;
+  ScreenRect r=dc_get_rect(oa);
+  float inside; vec2 sp=dc_vp_to_screen(vp,r,inside);
+  // TUBE ENTRY: CRT + procedural bezel/frame + reflection, as a layer with COVERAGE ALPHA.
+  // Background/foreground are separate image layers composited by the render loop.
+  vec4 bez = bezel_layer(vp,r);              // premultiplied: bezel/frame (+ backdrop or frame shadow)
+  vec3 crt=textureLod(uCRT, vp, 0.0).rgb;    // CRT layer (curved into the tube)
+  crt=dc_l2s(dc_s2l(crt)+0.02*uGlassLift*dc_room_rgb()*vec3(0.92,1.0,0.96));   // room light off the glass
+  // screen-edge mask — NOT gated by the boolean inside, which would hard-clip the corner AA.
+  float scr=dc_corner_mask(sp,r.aspect,r.corner,2.0/uRes.y);
+  vec4 outp=mix(bez,vec4(crt,1.0),scr);     // premultiplied — clean edge over layers
+  // ±1 LSB TPDF dither — breaks the halation glow's 8-bit banding (see dc-composite)
+  vec2 dp=gl_FragCoord.xy; float tpdf=(hash21(dp)+hash21(dp+41.7)-1.0)/255.0;
+  FragColor=vec4(clamp(outp.rgb+tpdf*outp.a,0.0,outp.a), outp.a);
+}`;
+
+function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);
+  if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)){status.textContent='shader: '+gl.getShaderInfoLog(o);throw new Error(gl.getShaderInfoLog(o));}return o;}
+const prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS));
+gl.linkProgram(prog);gl.useProgram(prog);
+const U=n=>gl.getUniformLocation(prog,n);
+
+// IMAGE LAYER shader — samples one image with a per-layer scale + offset, outputs PREMULTIPLIED
+// alpha so the render loop can alpha-blend (normal) or add (additive) any number of layers.
+const FS_LAYER=`#version 300 es
+precision highp float; out vec4 o;
+uniform sampler2D uTex; uniform vec2 uRes; uniform float uScl; uniform vec2 uOff; uniform float uOpac;
+// ---- scene light (mirror of dc-screen-layout.inc) ----
+uniform float uRoomLight,uRoomTemp,uRoomType,uSpill,uGlassLift;
+vec3 dc_s2l(vec3 c){ c=max(c,vec3(0.0)); return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),vec3(greaterThan(c,vec3(0.04045)))); }
+vec3 dc_l2s(vec3 c){ c=max(c,vec3(0.0)); return mix(c*12.92,1.055*pow(c,vec3(1.0/2.4))-0.055,vec3(greaterThan(c,vec3(0.0031308)))); }
+vec3 dc_kelvin(float K){ float t=clamp(K,1000.0,40000.0)/100.0;
+  float r=(t<=66.0)?255.0:329.698727446*pow(t-60.0,-0.1332047592);
+  float g=(t<=66.0)?99.4708025861*log(t)-161.1195681661:288.1221695283*pow(t-60.0,-0.0755148492);
+  float b=(t>=66.0)?255.0:((t<=19.0)?0.0:138.5177312231*log(t-10.0)-305.0447927307);
+  return clamp(vec3(r,g,b)/255.0,0.0,1.0); }
+vec3 dc_room_rgb(){ float x=clamp(uRoomLight,0.0,1.0); float K=uRoomTemp; vec3 shift=vec3(1.0); int type=int(uRoomType+0.5);
+  if(type==1) K=2700.0; if(type==2){ K=6000.0; shift=vec3(0.90,1.0,0.93); } if(type==3) K=6500.0;
+  return x*x*sqrt(dc_s2l(dc_kelvin(K))/dc_s2l(dc_kelvin(6500.0)))*shift; }
+vec3 dc_light(vec3 c, vec3 extra){ return dc_l2s(dc_s2l(c)*(dc_room_rgb()+extra)); }
+// TV-light spill on this layer (= dc-composite spill_colour x the layer's SpillMask)
+uniform sampler2D uCRT, uMask; uniform float uHasMask, uScale, uPosX, uPosY, uAspect, uBgSpillGain;
+uniform float uGlossStr, uGlossMirrorY, uGlossStretch, uGlossBlur;
+float hash21(vec2 p){ p=fract(p*vec2(123.34,345.45)); p+=dot(p,p+34.345); return fract(p.x*p.y); }
+// = dc-composite gloss_reflection (y is UP here: the mirror line is 1 - GLOSS_MIRROR_Y)
+vec3 gloss_reflection(vec2 vp){
+  float my=1.0-uGlossMirrorY, dy=my-vp.y; if(dy<=0.0) return vec3(0.0);
+  float ty=my+uGlossStretch*dy, rad=0.003+uGlossBlur*uGlossStretch*dy;
+  float lod=log2(max(0.5*rad*uRes.y,1.0)), rot=hash21(vp)*6.2831853; vec3 acc=vec3(0.0);
+  for(int k=0;k<8;k++){ float t=(float(k)+0.5)/8.0, a=float(k)*2.39996323+rot;
+    vec2 o=vec2(cos(a)*uRes.y/uRes.x, 1.4*sin(a))*sqrt(t)*rad;
+    acc+=textureLod(uCRT, vec2(vp.x,ty)+o, lod).rgb; }
+  return dc_s2l(acc/8.0)*uGlossStr; }
+vec3 spill_colour(vec2 vp){
+  if(uSpill<=0.0||uHasMask<0.5) return vec3(0.0);
+  vec2 hs=vec2(0.5*uScale*uAspect/(uRes.x/uRes.y), 0.5*uScale), c=vec2(uPosX,1.0-uPosY);
+  float tube_px=2.0*hs.y*uRes.y; vec2 p=(vp-c)/hs;
+  vec3 near_c=textureLod(uCRT, c+clamp(p,-0.8,0.8)*hs, log2(max(0.25*tube_px,1.0))).rgb;
+  vec3 whole_c=textureLod(uCRT, c, log2(max(tube_px,1.0))).rgb*1.6;
+  return uSpill*1.5*dc_s2l(0.5*near_c+0.5*whole_c); }
+void main(){
+  vec2 vp=gl_FragCoord.xy/uRes;
+  vec2 uv=(vp-0.5)/uScl + 0.5 - uOff;         // per-layer transform (scale about centre, then offset)
+  if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){ o=vec4(0.0); return; }  // outside the image -> nothing
+  vec4 c=texture(uTex,uv); float a=c.a*uOpac;
+  vec3 spill=(uHasMask>0.5)?texture(uMask,uv).r*uBgSpillGain*spill_colour(vp):vec3(0.0);
+  vec3 lit=dc_light(c.rgb,spill);
+  if(uHasMask>0.5&&uGlossStr>0.0){ float g=texture(uMask,uv).g; if(g>0.002) lit=dc_l2s(dc_s2l(lit)+g*gloss_reflection(vp)); }
+  o=vec4(lit*a, a);                            // pre-lit art under the room light + TV spill (+ gloss); premultiplied
+}`;
+const progL=gl.createProgram();gl.attachShader(progL,sh(gl.VERTEX_SHADER,VS));gl.attachShader(progL,sh(gl.FRAGMENT_SHADER,FS_LAYER));
+gl.linkProgram(progL); const UL=n=>gl.getUniformLocation(progL,n);
+
+// CRT image texture
+const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
+for(const q of[[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,q[0],q[1]);
+let hasImg=0;
+
+// ============================================================================
+//  CRT PIPELINE — faithful WebGL port of crt-physics (emission + halation) +
+//  dc-crt-physics (curve the CRT into the shared ScreenRect). Feeds the CRT LAYER
+//  texture (crtT) that the bezel pass above samples as `uCRT`.
+// ============================================================================
+let OUT_W=3840, OUT_H=2160;          // output resolution — MATCH your RA output (mask pitch is in output px!)
+const QW=480, QH=270;                 // halation buffers stay low-res (glow is resolution-insensitive)
+const CH=`#version 300 es
+precision highp float;`;
+const CVT=`
+vec3 s2l(vec3 c){bvec3 h=greaterThan(c,vec3(0.04045));return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),vec3(h));}
+vec3 l2s(vec3 c){c=clamp(c,0.,1.);bvec3 h=greaterThan(c,vec3(0.0031308));return mix(c*12.92,1.055*pow(c,vec3(1./2.4))-0.055,vec3(h));}`;
+// curved faceplate (SAME as dc-screen-layout.inc dc_curve)
+const LAYOUT=`
+uniform float uScale,uPosX,uPosY,uAspect,uCurveX,uCurveY,uCorner;
+struct SR{vec2 c;vec2 hs;float asp;vec2 cv;float cr;};
+SR getSR(float oa){SR r;r.asp=uAspect;r.cv=vec2(uCurveX,uCurveY);r.cr=uCorner;r.hs.y=0.5*uScale;r.hs.x=r.hs.y*r.asp/oa;r.c=vec2(uPosX,1.0-uPosY);return r;}  // POS_Y from TOP (match RA)
+vec2 c2d(vec2 uv,vec2 k){vec2 s2=10.0*k/(1.0+5.0*k),c=uv-0.5;float z=sqrt(max(1.0-dot(s2,c*c),1e-4));vec2 te=0.5/sqrt(1.0-0.25*s2);return 0.5+0.5*(c/z)/te;}
+vec2 vp2sp(vec2 vp,SR r,out float ins){vec2 p=(vp-r.c)/r.hs;vec2 uv=p*0.5+0.5;vec2 cuv=c2d(uv,r.cv);ins=(cuv.x>=0.&&cuv.x<=1.&&cuv.y>=0.&&cuv.y<=1.)?1.:0.;return cuv;}`;
+// emission: 2D beam (σV·σH, space-charge) + aperture mask + saturation knee + brightness
+const FS_EMIS=CH+`
+uniform sampler2D uSrc; uniform vec2 uRes;
+uniform float uGamma,uSigV,uSigH,uKsc,uAlpha,uMaskType,uPitch,uMask,uEsat,uBright,uDgun,uKedge,uScanG;
+out vec4 o; const vec3 LUMA=vec3(0.2126,0.7152,0.0722); const int MRV=3,MRH=4; const float S2PI=2.50662827;`+CVT+`
+vec3 gun(vec3 v){return pow(s2l(v),vec3(uGamma/2.2));}
+float theta(vec2 uv){vec2 p=(uv-.5)*2.;return atan(length(p)/uDgun);}
+float sig(float b,float I){return b+b*uKsc*pow(max(I,0.),uAlpha);}
+float bw(float d,float s){return exp(-(d*d)/(2.*s*s))/(s*S2PI);}
+float stp(float p,float c){float d=abs(p-c);d=min(d,3.-d);return smoothstep(0.8,0.2,d);}
+vec3 triad(float xt){float p=fract(xt)*3.;return vec3(stp(p,0.5),stp(p,1.5),stp(p,2.5));}
+float vwin(float yp,float e){return smoothstep(0.,e,yp)*smoothstep(1.,1.-e,yp);}
+vec3 grille(vec2 px){float xt=px.x/uPitch;vec3 m;
+  if(uMaskType<0.5){m=triad(xt);}
+  else if(uMaskType<1.5){float sp=uPitch*2.;float yo=(mod(floor(xt),2.)<1.)?0.:0.5;float yp=fract(px.y/sp+yo);m=triad(xt)*vwin(yp,0.16);}
+  else{float row=floor(px.y/uPitch);float xo=(mod(row,2.)<1.)?0.:0.5;float yp=fract(px.y/uPitch);m=triad(xt+xo)*vwin(yp,0.22);}
+  return mix(vec3(1.),m,uMask);}
+vec3 vconv(int cx,float sfy,int siy,float cols,float rows,float el){vec3 V=vec3(0.);
+  for(int iy=-MRV;iy<=MRV;iy++){vec2 s=vec2((float(cx)+0.5)/cols,(float(siy+iy)+0.5)/rows);
+    vec3 Ib=gun(texture(uSrc,s).rgb);float sg=sig(uSigV,dot(Ib,LUMA))*el;V+=Ib*bw(float(iy)+0.5-sfy,sg);}return V;}
+void main(){vec2 fc=gl_FragCoord.xy,uv=fc/uRes;vec2 src=vec2(textureSize(uSrc,0));float cols=src.x,rows=src.y;
+  float st=sin(theta(uv));float el=1.+uKedge*st*st;
+  float spx=uv.x*cols,sfx=fract(spx);int six=int(floor(spx));float spy=uv.y*rows,sfy=fract(spy);int siy=int(floor(spy));
+  vec3 col=vec3(0.);
+  for(int ix=-MRH;ix<=MRH;ix++){vec3 V=vconv(six+ix,sfy,siy,cols,rows,el);float sgx=sig(uSigH,dot(V,LUMA));col+=V*bw(float(ix)+0.5-sfx,sgx);}
+  // Stage 3c scanline contrast: peak-normalized vertical envelope (=1 on a line),
+  // raised to (scanG-1) -> deepens the gap, leaves the round peak untouched.
+  float env=0.,sge=uSigV*el; for(int iy=-MRV;iy<=MRV;iy++){float dy=float(iy)+0.5-sfy;env=max(env,exp(-(dy*dy)/(2.*sge*sge)));}
+  col*=pow(env,max(uScanG-1.,0.));
+  col*=grille(fc); col=col*(1.0+1.0/uEsat)/(1.0+col/uEsat)*uBright;
+  o=vec4(col,1.);}`;
+const FS_DOWN=CH+`uniform sampler2D uS;uniform vec2 uT;out vec4 o;
+void main(){vec2 uv=gl_FragCoord.xy/vec2(${QW}.,${QH}.);
+  vec3 c=texture(uS,uv+vec2(-uT.x,-uT.y)).rgb+texture(uS,uv+vec2(uT.x,-uT.y)).rgb+texture(uS,uv+vec2(-uT.x,uT.y)).rgb+texture(uS,uv+vec2(uT.x,uT.y)).rgb;
+  o=vec4(c*.25,1.);}`;
+const FS_BLUR=CH+`uniform sampler2D uS;uniform vec2 uDir;uniform float uSig;out vec4 o;
+void main(){vec2 uv=gl_FragCoord.xy/vec2(${QW}.,${QH}.);vec3 a=vec3(0.);float ws=0.;
+  for(int i=-12;i<=12;i++){float w=exp(-float(i*i)/(2.*uSig*uSig));a+=texture(uS,uv+float(i)*uDir).rgb*w;ws+=w;}o=vec4(a/ws,1.);}`;
+// CRT LAYER (= dc-crt-physics): curve emission+halo into the ScreenRect, vignette, sRGB, black outside
+const FS_CRT=CH+`
+uniform sampler2D uEmis,uHalo; uniform vec2 uRes; uniform float uW,uVig,uDgun;`+LAYOUT+CVT+`
+out vec4 o;
+void main(){vec2 vp=gl_FragCoord.xy/uRes;float oa=uRes.x/uRes.y;SR r=getSR(oa);float ins;vec2 sp=vp2sp(vp,r,ins);
+  vec2 pflat=(vp-r.c)/r.hs; if(abs(pflat.x)>1.03||abs(pflat.y)>1.03){o=vec4(0.);return;}
+  vec3 d=texture(uEmis,sp).rgb, h=texture(uHalo,sp).rgb; vec3 L=mix(d,h,uW);
+  vec2 pc=(sp-0.5)*2.; float th=atan(length(pc)/uDgun); L*=mix(1.,pow(max(cos(th),0.),2.5),uVig);
+  o=vec4(l2s(L),1.);}`;
+function mkProg(fs){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,VS));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS)){status.textContent='link: '+gl.getProgramInfoLog(p);throw new Error(gl.getProgramInfoLog(p));}return p;}
+const pEmis=mkProg(FS_EMIS),pDown=mkProg(FS_DOWN),pBlur=mkProg(FS_BLUR),pCRT=mkProg(FS_CRT);
+const uu=(p,n)=>gl.getUniformLocation(p,n);
+gl.getExtension('EXT_color_buffer_float');
+function mkTex(w,h,filt){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.HALF_FLOAT,null);
+  for(const q of[[gl.TEXTURE_MIN_FILTER,filt],[gl.TEXTURE_MAG_FILTER,filt],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,q[0],q[1]);return t;}
+function mkFbo(t){const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);return f;}
+let emisT=mkTex(OUT_W,OUT_H,gl.LINEAR),emisF=mkFbo(emisT);
+const h1=mkTex(QW,QH,gl.LINEAR),hf1=mkFbo(h1),h2=mkTex(QW,QH,gl.LINEAR),hf2=mkFbo(h2),h3=mkTex(QW,QH,gl.LINEAR),hf3=mkFbo(h3);
+let crtT=mkTex(OUT_W,OUT_H,gl.LINEAR),crtF=mkFbo(crtT);
+// change output resolution: recreate the OUT-sized buffers + the canvas backing store,
+// then redraw. MASK_PITCH is in output px, so the mask only matches RA at RA's resolution.
+function setOutRes(w,h){
+  OUT_W=w; OUT_H=h;
+  gl.deleteFramebuffer(emisF); gl.deleteTexture(emisT); gl.deleteFramebuffer(crtF); gl.deleteTexture(crtT);
+  emisT=mkTex(OUT_W,OUT_H,gl.LINEAR); emisF=mkFbo(emisT);
+  crtT=mkTex(OUT_W,OUT_H,gl.LINEAR); crtF=mkFbo(crtT);
+  const cc=document.getElementById('c'); cc.width=OUT_W; cc.height=OUT_H;
+  render();
+}
+
+// ---- source: reconstruct native-res game (bbox crop -> nativeH) from the upload,
+//      or a colour-bar test pattern before an image is chosen ----
+const srcTex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,srcTex);
+for(const q of[[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,q[0],q[1]);
+const srcImg=new Image(); let srcHasImg=false, srcDirty=true;
+const srcCanvas=document.createElement('canvas');
+
+// ---- IMAGE LAYER STACK. Ordered bottom->top; each image layer has its own transform/opacity/
+//      blend; the CRT+bezel is a special {kind:'tube'} entry you can drag among the layers.
+let layerSeq=1;
+let layers=[ {kind:'tube', name:'CRT + BEZEL'} ];   // start with just the tube
+function makeImageLayer(name){
+  const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  for(const q of[[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,q[0],q[1]);
+  const mt=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,mt);
+  for(const q of[[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,q[0],q[1]);
+  return {id:layerSeq++,kind:'image',name:name||'layer',tex:t,hasImg:false,img:new Image(),
+          maskTex:mt,hasMask:false,maskImg:new Image(),
+          scale:1.0,offX:0.0,offY:0.0,opacity:1.0,blend:'normal',visible:true};
+}
+// optional TV-light receptivity for an image layer (= the RA SpillMask texture; R channel, same framing)
+function layerLoadMask(L,url){ L.maskImg.onload=()=>{ gl.bindTexture(gl.TEXTURE_2D,L.maskTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,L.maskImg); L.hasMask=true; buildLayerUI(); render(); };
+  L.maskImg.src=url; }
+function layerLoadURL(L,url){ L.img.onload=()=>{ gl.bindTexture(gl.TEXTURE_2D,L.tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,L.img); L.hasImg=true; buildLayerUI(); render(); };
+  L.img.src=url; }
+function detectBBox(){const sw=480,sh=270,t=document.createElement('canvas');t.width=sw;t.height=sh;
+  const c=t.getContext('2d');c.drawImage(srcImg,0,0,sw,sh);const d=c.getImageData(0,0,sw,sh).data;
+  let x0=sw,y0=sh,x1=0,y1=0;for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){const i=(y*sw+x)*4,l=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
+    if(l>16){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}}
+  if(x1<x0){x0=0;y0=0;x1=sw-1;y1=sh-1;}const kx=srcImg.width/sw,ky=srcImg.height/sh;
+  return{x:x0*kx,y:y0*ky,w:(x1-x0+1)*kx,h:(y1-y0+1)*ky};}
+function rebuildSource(){
+  const nh=Math.round(P.nativeH);
+  const raw=document.getElementById('rawsrc') && document.getElementById('rawsrc').checked;
+  if(srcHasImg && raw){
+    // NATIVE SOURCE: upload the image at its own pixel grid, no crop/no resample —
+    // the faithful path for a ra-native.py 256x240 PNG (= RA's exact native feed).
+    gl.bindTexture(gl.TEXTURE_2D,srcTex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcImg);
+    srcDirty=false; return;
+  }
+  if(srcHasImg){const bb=detectBBox();const nw=Math.max(1,Math.round(nh*bb.w/bb.h));
+    srcCanvas.width=nw;srcCanvas.height=nh;const nc=srcCanvas.getContext('2d');
+    nc.imageSmoothingEnabled=true;nc.imageSmoothingQuality='high';nc.clearRect(0,0,nw,nh);
+    nc.drawImage(srcImg,bb.x,bb.y,bb.w,bb.h,0,0,nw,nh);
+  } else { // colour-bar test pattern at 4:3
+    const nw=Math.round(nh*4/3);srcCanvas.width=nw;srcCanvas.height=nh;const nc=srcCanvas.getContext('2d');
+    const bars=['#fff','#ff0','#0ff','#0f0','#f0f','#f00','#00f'];
+    for(let i=0;i<7;i++){nc.fillStyle=bars[i];nc.fillRect(Math.floor(i*nw/7),0,Math.ceil(nw/7),nh);}}
+  gl.bindTexture(gl.TEXTURE_2D,srcTex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcCanvas);
+  srcDirty=false;
+}
+function fs(p,n,v){gl.uniform1f(uu(p,n),v);}
+function setLayout(p){fs(p,'uScale',P.scale);fs(p,'uPosX',P.posX);fs(p,'uPosY',P.posY);fs(p,'uAspect',P.aspect);
+  fs(p,'uCurveX',P.curveX);fs(p,'uCurveY',P.curveY);fs(p,'uCorner',P.corner);}
+// run the CRT chain -> crtT (the CRT LAYER the bezel samples)
+function renderCRT(){
+  if(srcDirty) rebuildSource();
+  // 1) emission
+  gl.bindFramebuffer(gl.FRAMEBUFFER,emisF);gl.viewport(0,0,OUT_W,OUT_H);gl.useProgram(pEmis);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,srcTex);gl.uniform1i(uu(pEmis,'uSrc'),0);
+  gl.uniform2f(uu(pEmis,'uRes'),OUT_W,OUT_H);
+  fs(pEmis,'uGamma',P.gammaGun);fs(pEmis,'uSigV',P.sigmaV);fs(pEmis,'uScanG',P.scanG);fs(pEmis,'uSigH',P.sigmaH);fs(pEmis,'uKsc',P.ksc);fs(pEmis,'uAlpha',P.alphaSc);
+  fs(pEmis,'uMaskType',P.maskType);fs(pEmis,'uPitch',P.maskPitch);fs(pEmis,'uMask',P.maskStrength);fs(pEmis,'uEsat',P.esat);fs(pEmis,'uBright',P.brightness);
+  fs(pEmis,'uDgun',P.dGun);fs(pEmis,'uKedge',P.kEdge);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  // 2) halation: down -> blur H -> blur V
+  const sig=Math.max(P.haloSpread*0.25,0.35);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,hf1);gl.viewport(0,0,QW,QH);gl.useProgram(pDown);
+  gl.bindTexture(gl.TEXTURE_2D,emisT);gl.uniform1i(uu(pDown,'uS'),0);gl.uniform2f(uu(pDown,'uT'),1/OUT_W,1/OUT_H);gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,hf2);gl.useProgram(pBlur);
+  gl.bindTexture(gl.TEXTURE_2D,h1);gl.uniform1i(uu(pBlur,'uS'),0);gl.uniform2f(uu(pBlur,'uDir'),1/QW,0);fs(pBlur,'uSig',sig);gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,hf3);
+  gl.bindTexture(gl.TEXTURE_2D,h2);gl.uniform2f(uu(pBlur,'uDir'),0,1/QH);gl.drawArrays(gl.TRIANGLES,0,3);
+  // 3) CRT layer: curve into the ScreenRect
+  gl.bindFramebuffer(gl.FRAMEBUFFER,crtF);gl.viewport(0,0,OUT_W,OUT_H);gl.useProgram(pCRT);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,emisT);gl.uniform1i(uu(pCRT,'uEmis'),0);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,h3);gl.uniform1i(uu(pCRT,'uHalo'),1);
+  gl.uniform2f(uu(pCRT,'uRes'),OUT_W,OUT_H);setLayout(pCRT);fs(pCRT,'uW',P.haloWeight);fs(pCRT,'uVig',P.vignette);fs(pCRT,'uDgun',P.dGun);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  // = RA mipmap_input on the composite pass: the TV-light spill samples deep mips of the CRT layer
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,crtT);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.generateMipmap(gl.TEXTURE_2D);
+  gl.activeTexture(gl.TEXTURE0);
+}
+
+const UNIF = {
+  uScale:'scale',uPosX:'posX',uPosY:'posY',uAspect:'aspect',uCurveX:'curveX',uCurveY:'curveY',uCorner:'corner',
+  uBlackW:'blackW',uBzlW:'bzlW',uBzlWX:'bzlWX',uFrmW:'frmW',uFrmWX:'frmWX',uBzlCorner:'bzlCorner',uFrmCorner:'frmCorner',
+  uBzlHue:'bzlHue',uBzlSat:'bzlSat',uBzlVal:'bzlVal',uNoise:'noise',uBzlGloss:'bzlGloss',uBzlShine:'bzlShine',
+  uLightAngle:'lightAngle',uLightElev:'lightElev',uAmbient:'ambient',uBzlSlope:'bzlSlope',uLightGradX:'lightGradX',uLightGradY:'lightGradY',
+  uLipW:'lipW',uLipRoll:'lipRoll',uBzlEdgeW:'bzlEdgeW',uFrmEdgeW:'frmEdgeW',uFrmEdgeRoll:'frmEdgeRoll',
+  uCornerFade:'cornerFade',uCreaseWInner:'creaseWInner',uCreaseWOuter:'creaseWOuter',uCreaseStr:'creaseStr',
+  uFrmIndep:'frmIndep',uFrmHue:'frmHue',uFrmSat:'frmSat',uFrmVal:'frmVal',uShadowW:'shadowW',
+  uBlackVal:'blackVal',uBgBase:'bgBase',uReflOn:'reflOn',uReflStr:'reflStr',uReflFalloff:'reflFalloff',uReflBlur:'reflBlur',uReflCorner:'reflCorner',
+  uRoomLight:'roomLight',uRoomTemp:'roomTemp',uRoomType:'roomType',uSpill:'spill',uGlassLift:'glassLift',
+};
+// where the curved tube corner lands on the flat bezel plane = dc_uncurve(1,1) (closed form, see dc-screen-layout.inc)
+function seamInnerA(curveX,curveY,aspect){
+  const s2=[curveX,curveY].map(k=>10*k/(1+5*k)), t=s2.map(v=>0.5/Math.sqrt(1-0.25*v));
+  const z=1/Math.sqrt(1+s2[0]*t[0]*t[0]+s2[1]*t[1]*t[1]);
+  return [t[0]*z*aspect, t[1]*z];
+}
+// which image layers are actually showing below / above the tube (= RA DC_BG_ON / DC_FG_ON)
+function sceneLayers(){ const t=layers.findIndex(L=>L.kind==='tube'), on=L=>L.kind==='image'&&L.hasImg&&L.visible;
+  return {bg:layers.slice(0,t).some(on), fg:layers.slice(t+1).some(on)}; }
+function drawTube(){
+  gl.useProgram(prog);
+  gl.uniform2f(U('uRes'),OUT_W,OUT_H);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,crtT); gl.uniform1i(U('uCRT'),0);
+  for(const [u,k] of Object.entries(UNIF)) gl.uniform1f(U(u),P[k]);
+  const A=seamInnerA(P.curveX,P.curveY,P.aspect); gl.uniform2f(U('uSeamA'),A[0],A[1]);
+  const ML=layers.find(L=>L.kind==='image'&&L.hasMask&&L.visible);           // the room art's SpillMask (full-frame)
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,ML?ML.maskTex:null); gl.uniform1i(U('uRoomMask'),3);
+  gl.uniform1f(U('uHasRoomMask'),ML?1:0); gl.uniform1f(U('uBgSpillGain'),P.bgSpillGain); gl.activeTexture(gl.TEXTURE0);
+  gl.uniform1f(U('uHasBg'),sceneLayers().bg?1:0);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);   // premultiplied "over"
+  gl.drawArrays(gl.TRIANGLES,0,3);
+}
+function drawImageLayer(L){
+  if(!L.hasImg||!L.visible) return;
+  gl.useProgram(progL);
+  gl.uniform2f(UL('uRes'),OUT_W,OUT_H);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.uniform1i(UL('uTex'),0);
+  gl.uniform1f(UL('uScl'),L.scale); gl.uniform2f(UL('uOff'),L.offX,L.offY); gl.uniform1f(UL('uOpac'),L.opacity);
+  for(const [u,k] of [['uRoomLight','roomLight'],['uRoomTemp','roomTemp'],['uRoomType','roomType'],['uSpill','spill'],
+                      ['uScale','scale'],['uPosX','posX'],['uPosY','posY'],['uAspect','aspect'],['uBgSpillGain','bgSpillGain'],
+                      ['uGlossStr','glossStr'],['uGlossMirrorY','glossMirrorY'],['uGlossStretch','glossStretch'],['uGlossBlur','glossBlur']]) gl.uniform1f(UL(u),P[k]);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,crtT); gl.uniform1i(UL('uCRT'),1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D,L.maskTex); gl.uniform1i(UL('uMask'),2);
+  gl.uniform1f(UL('uHasMask'),L.hasMask?1:0); gl.activeTexture(gl.TEXTURE0);
+  gl.blendFunc(gl.ONE, L.blend==='add' ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);   // premultiplied over / add
+  gl.drawArrays(gl.TRIANGLES,0,3);
+}
+function render(){
+  renderCRT();                                 // physics CRT -> crtT (the CRT LAYER)
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.viewport(0,0,OUT_W,OUT_H);
+  gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);
+  for(const L of layers){ if(L.kind==='tube') drawTube(); else drawImageLayer(L); }
+  gl.disable(gl.BLEND);
+  gl.activeTexture(gl.TEXTURE0);
+  if(window.schedulePresent) schedulePresent();
+}
+
+// ================================ UI ================================
+function setStatus(t,err){ status.textContent=t; status.classList.toggle('err',!!err); }
+// Remembered per browser (params, tab, output res, open groups); image layers are not stored.
+const STORE='crt-studio-ui-v2';
+function loadUI(){ try{ return JSON.parse(localStorage.getItem(STORE))||{}; }catch(e){ return {}; } }
+function saveUI(){ try{ localStorage.setItem(STORE,JSON.stringify(UI)); }catch(e){} }
+const UI=Object.assign({tab:'layout',res:'3840x2160',theme:'auto',open:{},P:{}},loadUI());
+// metachow theme: follow the OS (auto) or force light / dark
+const themeEl=document.getElementById('theme');
+function applyTheme(t){ UI.theme=t; themeEl.value=t; if(t==='auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme=t; }
+applyTheme(['auto','light','dark'].includes(UI.theme)?UI.theme:'auto');
+themeEl.addEventListener('change',()=>{ applyTheme(themeEl.value); saveUI(); });
+for(const k in UI.P) if(k in DEF && Number.isFinite(+UI.P[k])) P[k]=+UI.P[k];
+let saveT=0; function persist(){ clearTimeout(saveT); saveT=setTimeout(()=>{ UI.P={}; for(const k in P) if(P[k]!==DEF[k]) UI.P[k]=P[k]; saveUI(); },250); }
+
+const groupsEl=document.getElementById('groups');
+const ROWS={};                 // key -> {row, set(v) (updates the widgets only), group}
+const GROUPS=[];               // {det, tab, keys[], badge, greset}
+const decOf=step=>step<0.001?4:(step<0.01?3:(step<1?2:0));
+const fmtV=(v,step)=>(+v).toFixed(decOf(step));
+const pct=(v,min,max)=>(100*(v-min)/(max-min)).toFixed(2)+'%';
+
+function setParam(key,v,{silent}={}){
+  const s=ROWS[key].spec; v=Math.min(s[3],Math.max(s[2],+v));
+  P[key]=v; ROWS[key].set(v); if(key==='nativeH') srcDirty=true;
+  if(!silent){ refreshMods(); persist(); render(); }
+}
+function syncAll(){ for(const k in ROWS) ROWS[k].set(P[k]); refreshMods(); persist(); render(); }
+function refreshMods(){
+  const perTab={};
+  for(const g of GROUPS){
+    const n=g.keys.filter(k=>P[k]!==DEF[k]).length;
+    g.badge.textContent=n?n+' changed':''; g.greset.classList.toggle('show',n>0);
+    perTab[g.tab]=(perTab[g.tab]||0)+n;
+  }
+  for(const k in ROWS) ROWS[k].row.classList.toggle('mod',P[k]!==DEF[k]);
+  document.querySelectorAll('#tabs button').forEach(b=>{ b.querySelector('.n').textContent=perTab[b.dataset.tab]||''; });
+}
+
+function makeGroup(id,title,tab){
+  const det=document.createElement('details'); det.className='grp'; det.dataset.tab=tab; det.dataset.id=id;
+  det.open=id in UI.open ? UI.open[id] : (id!=='__g_refl');
+  det.addEventListener('toggle',()=>{ UI.open[id]=det.open; saveUI(); });
+  const sm=document.createElement('summary');
+  const t=document.createElement('span'); t.className='t'; t.textContent=title;
+  const badge=document.createElement('span'); badge.className='badge';
+  const greset=document.createElement('button'); greset.className='greset text'; greset.textContent='reset group'; greset.type='button';
+  sm.append(t,badge,greset);
+  const rows=document.createElement('div'); rows.className='rows';
+  det.append(sm,rows); groupsEl.append(det);
+  const g={det,tab,keys:[],badge,greset,rows};
+  greset.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation();
+    for(const k of g.keys) setParam(k,DEF[k],{silent:true}); refreshMods(); persist(); render(); });
+  GROUPS.push(g); return g;
+}
+
+function makeRow(spec,g){
+  const [key,label,min,max,step,,opts,tip]=spec;
+  const m=label.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  const name=m?m[1]:label, define=m?m[2]:'';
+  const row=document.createElement('div'); row.className='row'; row.dataset.search=(name+' '+define+' '+(tip||'')).toLowerCase();
+  const rh=document.createElement('div'); rh.className='rh';
+  const nm=document.createElement('span'); nm.className='name'; nm.textContent=name; if(tip) nm.title=tip;
+  const cd=document.createElement('code'); cd.textContent=define; cd.title=define;
+  const rst=document.createElement('button'); rst.className='rst'; rst.type='button'; rst.textContent='↺';
+  rst.title='back to default ('+fmtV(DEF[key],step)+')';
+  rst.addEventListener('click',()=>setParam(key,DEF[key]));
+  rh.append(nm,cd,rst);
+  row.append(rh);
+  let set;
+  if(opts){                                         // discrete: segmented buttons
+    const seg=document.createElement('div'); seg.className='seg';
+    const bs=opts.map((o,i)=>{ const b=document.createElement('button'); b.type='button'; b.textContent=o;
+      b.addEventListener('click',()=>setParam(key,min+i)); seg.append(b); return b; });
+    row.append(seg);
+    set=v=>bs.forEach((b,i)=>b.classList.toggle('on',Math.round(v)===min+i));
+  } else {
+    const num=document.createElement('input'); num.type='number'; num.className='num'; num.step=step; num.min=min; num.max=max;
+    const r=document.createElement('input'); r.type='range'; r.min=min; r.max=max; r.step=step;
+    r.style.setProperty('--d',pct(DEF[key],min,max));
+    r.addEventListener('input',()=>setParam(key,+r.value));
+    r.addEventListener('dblclick',()=>setParam(key,DEF[key]));
+    num.addEventListener('change',()=>{ if(num.value!=='' && Number.isFinite(+num.value)) setParam(key,+num.value); else set(P[key]); });
+    num.addEventListener('keydown',e=>{ if(e.key==='Enter') num.blur(); if(e.key==='Escape'){ set(P[key]); num.blur(); } });
+    rh.insertBefore(num,rst);
+    row.append(r);
+    set=v=>{ r.value=v; r.style.setProperty('--p',pct(v,min,max)); if(document.activeElement!==num) num.value=fmtV(v,step); };
+  }
+  g.rows.append(row); g.keys.push(key);
+  ROWS[key]={row,set,spec,group:g};
+  set(P[key]);
+}
+
+let curG=null;
+for(const s of SLIDERS){
+  if(s[0].startsWith('__')) curG=makeGroup(s[0],s[1],s[2]);
+  else makeRow(s,curG);
+}
+
+// ===== Scene tab: image LAYER STACK (background / device / foreground) =====
+const layerListEl=document.createElement('div');
+(function(){
+  const g=makeGroup('__g_layers','Image layers','scene'); g.greset.remove();
+  const bar=document.createElement('div'); bar.className='lbar';
+  const ab=document.createElement('button'); ab.type='button'; ab.textContent='+ Image layer';
+  ab.addEventListener('click',()=>{ layers.unshift(makeImageLayer('layer '+layerSeq)); buildLayerUI(); render(); });
+  bar.append(ab);
+  if(window.XINGHUI_BG){                              // written by art/export_ra.py (git-ignored, regenerable)
+    const xb=document.createElement('button'); xb.type='button'; xb.textContent='Preset: XINGHUI room';
+    xb.title='the room scene of crt-decoupled-xinghui.slangp: background + SpillMask + its bezel / DC_* values';
+    xb.addEventListener('click',applyXinghuiPreset); bar.append(xb);
+  }
+  if(window.BG_FAMICOM||window.DEV_TM20_BEZEL){      // only when the (optional, local) Duimon assets are present
+    const pb=document.createElement('button'); pb.type='button'; pb.textContent='Preset: Famicom · TM20';
+    pb.addEventListener('click',applyFamicomTM20Preset); bar.append(pb);
+  }
+  const note=document.createElement('div'); note.className='note';
+  note.textContent='Drag a layer by its header to reorder. Layers above "CRT + bezel" sit in front of the glass (foreground), layers below it are the background. A mask image is the RetroArch SpillMask: R = how much TV light a pixel receives, G = glossy surface.';
+  g.rows.append(bar,layerListEl,note);
+})();
+
+function pickFile(cb){ const fi=document.createElement('input'); fi.type='file'; fi.accept='image/*';
+  fi.addEventListener('change',()=>{ const f=fi.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>cb(rd.result,f.name); rd.readAsDataURL(f); });
+  fi.click(); }
+function buildLayerUI(){
+  layerListEl.innerHTML='';
+  let dragIdx=null;
+  layers.forEach((L,idx)=>{
+    const row=document.createElement('div'); row.className='layer'+(L.kind==='tube'?' tube':'')+(L.visible===false?' hiddenL':'');
+    // ONLY the header is draggable (not the whole row) so the sliders below stay usable.
+    const hd=document.createElement('div'); hd.className='lh'; hd.draggable=true; hd.title='drag to reorder';
+    const grip=document.createElement('span'); grip.className='grip'; grip.textContent='⠿';
+    const nm=document.createElement('span'); nm.className='lname';
+    hd.append(grip,nm);
+    hd.addEventListener('dragstart',e=>{ dragIdx=idx; e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragover',e=>{ e.preventDefault(); row.classList.add('drag-over'); });
+    row.addEventListener('dragleave',()=>row.classList.remove('drag-over'));
+    row.addEventListener('drop',e=>{ e.preventDefault(); row.classList.remove('drag-over'); if(dragIdx===null||dragIdx===idx) return;
+      const [m]=layers.splice(dragIdx,1); layers.splice(idx,0,m); buildLayerUI(); render(); });
+    row.append(hd); layerListEl.append(row);
+    if(L.kind==='tube'){ nm.textContent='CRT + bezel'; return; }
+    nm.textContent=L.name; nm.title=L.name;
+    const imgB=document.createElement('button'); imgB.type='button'; imgB.textContent=L.hasImg?'Image ✓':'Image…'; if(L.hasImg) imgB.className='has';
+    imgB.addEventListener('click',()=>pickFile((url,n)=>{ L.name=n; layerLoadURL(L,url); }));
+    const maskB=document.createElement('button'); maskB.type='button'; maskB.textContent=L.hasMask?'Mask ✓':'Mask…'; if(L.hasMask) maskB.className='has';
+    maskB.title='TV-light mask (SpillMask): R = receptivity, G = glossy surface';
+    maskB.addEventListener('click',()=>pickFile(url=>layerLoadMask(L,url)));
+    const vis=document.createElement('button'); vis.type='button'; vis.className='icon'; vis.textContent=L.visible?'Hide':'Show'; vis.title='show / hide this layer';
+    vis.addEventListener('click',()=>{ L.visible=!L.visible; buildLayerUI(); render(); });
+    const del=document.createElement('button'); del.type='button'; del.textContent='Remove'; del.title='remove this layer';
+    del.addEventListener('click',()=>{ layers.splice(layers.indexOf(L),1); buildLayerUI(); render(); });
+    hd.append(vis,del);
+    const acts=document.createElement('div'); acts.className='lacts';
+    const chip=document.createElement('span'); chip.className='chip'; chip.textContent=L.hasImg?L.img.naturalWidth+'×'+L.img.naturalHeight:'no image yet';
+    acts.append(imgB,maskB,chip); row.append(acts);
+    const body=document.createElement('div'); body.className='lbody'; row.append(body);
+    const mk=(lbl,min,max,step,def,get,set)=>{
+      const r=document.createElement('div'); r.className='row';
+      const rh=document.createElement('div'); rh.className='rh';
+      const n=document.createElement('span'); n.className='name'; n.textContent=lbl;
+      const sp=document.createElement('code');
+      const num=document.createElement('input'); num.type='number'; num.className='num'; num.step=step;
+      const rg=document.createElement('input'); rg.type='range'; rg.min=min; rg.max=max; rg.step=step; rg.style.setProperty('--d',pct(def,min,max));
+      const show=()=>{ rg.value=get(); rg.style.setProperty('--p',pct(get(),min,max)); num.value=fmtV(get(),step); r.classList.toggle('mod',get()!==def); };
+      const apply=v=>{ set(Math.min(max,Math.max(min,v))); show(); render(); };
+      rg.addEventListener('input',()=>apply(+rg.value)); rg.addEventListener('dblclick',()=>apply(def));
+      num.addEventListener('change',()=>{ if(Number.isFinite(+num.value)) apply(+num.value); else show(); });
+      rh.append(n,sp,num); r.append(rh,rg); show(); return r; };
+    body.append(mk('scale',0.2,3.0,0.01,1.0,()=>L.scale,v=>L.scale=v));
+    body.append(mk('offset X',-1.0,1.0,0.002,0.0,()=>L.offX,v=>L.offX=v));
+    body.append(mk('offset Y',-1.0,1.0,0.002,0.0,()=>L.offY,v=>L.offY=v));
+    body.append(mk('opacity',0.0,1.0,0.02,1.0,()=>L.opacity,v=>L.opacity=v));
+    const br=document.createElement('div'); br.className='row';
+    const bh=document.createElement('div'); bh.className='rh'; const bn=document.createElement('span'); bn.className='name'; bn.textContent='blend'; bh.append(bn);
+    const seg=document.createElement('div'); seg.className='seg';
+    ['normal','add'].forEach(x=>{ const b=document.createElement('button'); b.type='button'; b.textContent=x; b.classList.toggle('on',L.blend===x);
+      b.addEventListener('click',()=>{ L.blend=x; buildLayerUI(); render(); }); seg.append(b); });
+    br.append(bh,seg); body.append(br);
+  });
+}
+function applyFamicomTM20Preset(){
+  layers=[];
+  const add=(name,v)=>{ const L=makeImageLayer(name); if(window[v]) layerLoadURL(L,window[v]); layers.push(L); };
+  add('Famicom (bg)','BG_FAMICOM');
+  add('TM20 housing','DEV_TM20_BEZEL');
+  add('TM20 decal (bg)','DEV_TM20_DECAL');
+  layers.push({kind:'tube',name:'CRT + BEZEL'});
+  add('TM20 decal (fg)','DEV_TM20_DECAL');
+  Object.assign(P,{scale:0.72,posX:0.500,posY:0.425,aspect:1.333,curveX:0.012,curveY:0.020,corner:0.018,
+                   blackW:0.005,bzlW:0.045,bzlWX:0.045,frmW:0.055,frmWX:0.0825,bzlCorner:0.0044,frmCorner:0.0024});
+  buildLayerUI(); syncAll();
+}
+function applyXinghuiPreset(){
+  const L=makeImageLayer('XINGHUI room'); layerLoadURL(L,window.XINGHUI_BG); if(window.XINGHUI_MASK) layerLoadMask(L,window.XINGHUI_MASK);
+  layers=[L,{kind:'tube',name:'CRT + BEZEL'}];
+  Object.assign(P,DEF); const n=importText(window.XINGHUI_PARAMS||'');
+  buildLayerUI(); syncAll(); setStatus('XINGHUI room preset: '+n+' values from dc-composite-xinghui + the preset');
+}
+buildLayerUI();
+
+// ---- import: '#define NAME value', 'NAME = "value"' (preset) or 'NAME value' (this tool's export) ----
+const BYDEF={}; for(const s of SLIDERS){ if(s[0].startsWith('__')) continue; const m=s[1].match(/\(([A-Z][A-Z0-9_]+)\)\s*$/); if(m) BYDEF[m[1]]=s[0]; }
+function importText(t){
+  let n=0; const re=/(?:#define\s+)?\b([A-Z][A-Z0-9_]{2,})\b\s*=?\s*"?(-?\d*\.?\d+(?:[eE]-?\d+)?)"?/g; let m;
+  while((m=re.exec(t))){ const k=BYDEF[m[1]]; if(!k) continue; const s=ROWS[k].spec; P[k]=Math.min(s[3],Math.max(s[2],+m[2])); n++;
+    if(m[1]==='REFL_STR') P.reflOn=+m[2]>0?1:0; }
+  return n;
+}
+
+// ---- tabs + search ----
+const filterEl=document.getElementById('filter');
+function setTab(tab){
+  UI.tab=tab; saveUI();
+  if(filterEl.value){ filterEl.value=''; applyFilter(); }
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+  for(const g of GROUPS) g.det.style.display=g.tab===tab?'':'none';
+  groupsEl.scrollTop=0;
+}
+function applyFilter(){
+  const q=filterEl.value.trim().toLowerCase();
+  if(!q){ for(const k in ROWS) ROWS[k].row.classList.remove('hidden'); setTabView(); return; }
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.remove('on'));
+  for(const g of GROUPS){
+    let any=false;
+    for(const k of g.keys){ const hit=ROWS[k].row.dataset.search.includes(q); ROWS[k].row.classList.toggle('hidden',!hit); any=any||hit; }
+    g.det.style.display=any?'':'none'; if(any) g.det.open=true;
+  }
+}
+function setTabView(){ document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===UI.tab));
+  for(const g of GROUPS) g.det.style.display=g.tab===UI.tab?'':'none'; }
+filterEl.addEventListener('input',applyFilter);
+filterEl.addEventListener('keydown',e=>{ if(e.key==='Escape'){ filterEl.value=''; applyFilter(); filterEl.blur(); } });
+document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+setTab(['layout','crt','bezel','scene'].includes(UI.tab)?UI.tab:'layout');
+refreshMods();
+
+document.getElementById('reset').addEventListener('click',()=>{ Object.assign(P,DEF); srcDirty=true; syncAll(); });
+
+// 1:1 fullscreen — the ONLY faithful way to preview a CRT mask/scanline: the
+// browser downscales the canvas to fit the pane, which beats against the
+// high-freq mask -> moiré (RA sends it to the monitor 1:1, so RA is correct).
+function toggleFull(){ const el=document.getElementById('c');
+  if(document.fullscreenElement) document.exitFullscreen(); else if(el.requestFullscreen) el.requestFullscreen(); }
+document.getElementById('full').addEventListener('click',toggleFull);
+const resEl=document.getElementById('res');
+resEl.addEventListener('change',()=>{ const [w,h]=resEl.value.split('x').map(Number); UI.res=resEl.value; saveUI(); setOutRes(w,h); });
+if(UI.res!==resEl.value && [...resEl.options].some(o=>o.value===UI.res)){ resEl.value=UI.res; const [w,h]=UI.res.split('x').map(Number); setOutRes(w,h); }
+document.getElementById('rawsrc').addEventListener('change',()=>{ srcDirty=true; render(); });
+
+// keyboard: 1-4 tabs, / search, F fullscreen, E export (not while typing)
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape' && document.getElementById('export').classList.contains('open')){ closeExport(); return; }
+  const t=e.target; if(t.tagName==='INPUT'&&t.type!=='range'&&t.type!=='checkbox' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || e.ctrlKey||e.metaKey||e.altKey) return;
+  const tabs=['layout','crt','bezel','scene'];
+  if(e.key>='1'&&e.key<='4'){ setTab(tabs[+e.key-1]); e.preventDefault(); }
+  else if(e.key==='/'){ filterEl.focus(); e.preventDefault(); }
+  else if(e.key==='f'||e.key==='F'){ toggleFull(); }
+  else if(e.key==='e'||e.key==='E'){ openExport(); }
+});
+
+// hover magnifier
+const mag=document.getElementById('mag'), mctx=mag.getContext('2d'); mctx.imageSmoothingEnabled=false;
+const cv=document.getElementById('c'), cwrap=document.getElementById('stage'), view=document.getElementById('view');
+// Source region scales WITH the output resolution so the magnifier always shows
+// the same CONTENT-relative window (and thus the same mask size) regardless of res
+// — otherwise 4K over-zooms 2x and the mask looks twice as coarse as RA at 1:1.
+view.addEventListener('mousemove',e=>{
+  const MAG_SRC=Math.round(90*OUT_W/1920); // 90 canvas px in 1920-space, scaled to current res
+  const rc=view.getBoundingClientRect();
+  const fx=(e.clientX-rc.left)/rc.width, fy=(e.clientY-rc.top)/rc.height;
+  const sx=fx*OUT_W-MAG_SRC/2, sy=fy*OUT_H-MAG_SRC/2;
+  mctx.fillStyle='#000'; mctx.fillRect(0,0,260,260);
+  mctx.drawImage(cv, sx,sy,MAG_SRC,MAG_SRC, 0,0,260,260);
+  // position box near cursor, clamped inside the stage
+  const wr=cwrap.getBoundingClientRect();
+  let px=e.clientX-wr.left+18, py=e.clientY-wr.top+18;
+  if(px+264>wr.width) px=e.clientX-wr.left-264-18; if(py+264>wr.height) py=wr.height-264;
+  mag.style.left=Math.max(0,px)+'px'; mag.style.top=Math.max(0,py)+'px'; mag.style.display='block';
+});
+view.addEventListener('mouseleave',()=>mag.style.display='none');
+
+// ---- the pane's view: a scaled-down copy of the output buffer, low-passed first. Downscaling a CRT image without
+// that makes its scanlines (~6 px apart at 4K) and mask (5 px) alias into moiré bands; a Gaussian of ~0.6 display px
+// keeps what the eye resolves at that size. The magnifier and 1:1 fullscreen still read the buffer itself.
+const vctx=view.getContext('2d'), blurC=document.createElement('canvas'), bctx=blurC.getContext('2d');
+var presentQueued=false;   // var: render() may run before this line
+function fitView(){ const r=view.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  const w=Math.max(2,Math.round(r.width*dpr)), h=Math.max(2,Math.round(r.height*dpr));
+  if(view.width!==w||view.height!==h){ view.width=w; view.height=h; return true; } return false; }
+function presentView(){
+  presentQueued=false; fitView();
+  const s=OUT_W/view.width;
+  vctx.imageSmoothingEnabled=true; vctx.imageSmoothingQuality='high';
+  if(s<=1.05){ vctx.drawImage(cv,0,0,view.width,view.height); return; }
+  if(blurC.width!==OUT_W||blurC.height!==OUT_H){ blurC.width=OUT_W; blurC.height=OUT_H; }
+  bctx.filter='blur('+(0.6*s).toFixed(2)+'px)'; bctx.drawImage(cv,0,0); bctx.filter='none';
+  vctx.drawImage(blurC,0,0,view.width,view.height);
+}
+function schedulePresent(){                 // next frame; the timer covers hidden tabs / headless, where rAF stalls
+  if(presentQueued) return; presentQueued=true;
+  requestAnimationFrame(()=>{ if(presentQueued) presentView(); }); setTimeout(()=>{ if(presentQueued) presentView(); },100); }
+new ResizeObserver(()=>{ if(fitView()) schedulePresent(); }).observe(view);
+
+// screenshot: button or drag & drop onto the preview
+function loadShot(file){
+  if(!file||!file.type.startsWith('image/')){ setStatus('not an image: '+(file?file.name:'?'),true); return; }
+  const rd=new FileReader();
+  rd.onload=()=>{ srcImg.onload=()=>{ srcHasImg=true; srcDirty=true;
+    setStatus(file.name+' — '+srcImg.width+'×'+srcImg.height+(document.getElementById('rawsrc').checked?' (used as native source)':' → reconstructed to '+Math.round(P.nativeH)+' lines')); render(); };
+    srcImg.src=rd.result; }; rd.readAsDataURL(file);
+}
+const fileEl=document.getElementById('file');
+document.getElementById('loadbtn').addEventListener('click',()=>fileEl.click());
+fileEl.addEventListener('change',()=>loadShot(fileEl.files[0]));
+let dragDepth=0;
+cwrap.addEventListener('dragenter',e=>{ if(![...e.dataTransfer.types].includes('Files')) return; dragDepth++; cwrap.classList.add('dragging'); });
+cwrap.addEventListener('dragleave',()=>{ if(--dragDepth<=0){ dragDepth=0; cwrap.classList.remove('dragging'); } });
+cwrap.addEventListener('dragover',e=>{ if([...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+cwrap.addEventListener('drop',e=>{ e.preventDefault(); dragDepth=0; cwrap.classList.remove('dragging'); loadShot(e.dataTransfer.files[0]); });
+
+// export slang defines
+function fmt(v,d){ return (+v).toFixed(d); }
+function exportText(){
+  const t=
+`// ---- CRT: crt-physics params.inc (#pragma defaults) + dc-crt-physics.slang #defines ----
+GAMMA_GUN ${fmt(P.gammaGun,2)}   SIGMA0 ${fmt(P.sigmaV,2)}   SCAN_GAMMA ${fmt(P.scanG,2)}   SIGMA_H ${fmt(P.sigmaH,2)}   K_SC ${fmt(P.ksc,2)}   ALPHA_SC ${fmt(P.alphaSc,2)}
+K_EDGE ${fmt(P.kEdge,2)}   MASK_TYPE ${fmt(P.maskType,0)}   MASK_PITCH ${fmt(P.maskPitch,1)}   MASK_STR ${fmt(P.maskStrength,2)}   E_SAT ${fmt(P.esat,2)}   BRIGHT ${fmt(P.brightness,2)}
+// dc-crt-physics.slang:  #define HALO_WEIGHT ${fmt(P.haloWeight,2)}   #define VIGNETTE ${fmt(P.vignette,2)}   #define D_GUN ${fmt(P.dGun,1)}   (HALO_SPREAD ${fmt(P.haloSpread,1)} -> halo blur passes)
+
+// ---- bezel #defines: paste into a decoupled/dc-composite-*.slang wrapper (before the #include) ----
+#define BLACK_EDGE_W            ${fmt(P.blackW,4)}
+#define BZL_WIDTH               ${fmt(P.bzlW,4)}
+#define BZL_WIDTH_X             ${fmt(P.bzlWX,4)}
+#define FRM_WIDTH               ${fmt(P.frmW,4)}
+#define FRM_WIDTH_X             ${fmt(P.frmWX,4)}
+#define BZL_OUTER_CORNER        ${fmt(P.bzlCorner,4)}
+#define FRM_OUTER_CORNER        ${fmt(P.frmCorner,4)}
+#define BZL_COLOR_HUE           ${fmt(P.bzlHue,1)}
+#define BZL_COLOR_SAT           ${fmt(P.bzlSat,1)}
+#define BZL_COLOR_VAL           ${fmt(P.bzlVal,3)}
+#define BZL_NOISE               ${fmt(P.noise,2)}
+#define BZL_GLOSS               ${fmt(P.bzlGloss,2)}
+#define BZL_SHINE               ${fmt(P.bzlShine,1)}
+#define LIGHT_ANGLE             ${fmt(P.lightAngle,1)}
+#define LIGHT_ELEV              ${fmt(P.lightElev,1)}
+#define AMBIENT                 ${fmt(P.ambient,2)}
+#define BZL_SLOPE               ${fmt(P.bzlSlope,1)}
+#define LIGHT_GRAD_X            ${fmt(P.lightGradX,3)}
+#define LIGHT_GRAD_Y            ${fmt(P.lightGradY,3)}
+#define LIP_WIDTH               ${fmt(P.lipW,4)}
+#define LIP_ROLL                ${fmt(P.lipRoll,1)}
+#define BZL_EDGE_W              ${fmt(P.bzlEdgeW,4)}
+#define FRM_EDGE_W              ${fmt(P.frmEdgeW,4)}
+#define FRM_EDGE_ROLL           ${fmt(P.frmEdgeRoll,1)}
+#define CORNER_FADE             ${fmt(P.cornerFade,3)}
+#define CREASE_W_IN             ${fmt(P.creaseWInner,3)}
+#define CREASE_W_OUT            ${fmt(P.creaseWOuter,3)}
+#define CREASE_STR              ${fmt(P.creaseStr,2)}
+#define FRM_USE_INDEP_COLOR     ${P.frmIndep>0.5?'1':'0'}
+#define FRM_COLOR_HUE           ${fmt(P.frmHue,1)}
+#define FRM_COLOR_SAT           ${fmt(P.frmSat,1)}
+#define FRM_COLOR_VAL           ${fmt(P.frmVal,3)}
+#define SHADOW_WIDTH            ${fmt(P.shadowW,3)}
+#define BLACK_EDGE_VAL          ${fmt(P.blackVal,3)}
+#define BG_BASE                 ${fmt(P.bgBase,3)}
+#define BG_SPILL_GAIN           ${fmt(P.bgSpillGain,2)}
+#define GLOSS_STR               ${fmt(P.glossStr,2)}
+#define GLOSS_MIRROR_Y          ${fmt(P.glossMirrorY,4)}
+#define GLOSS_STRETCH           ${fmt(P.glossStretch,2)}
+#define GLOSS_BLUR              ${fmt(P.glossBlur,2)}
+#define REFL_STR                ${fmt(P.reflOn>0.5?P.reflStr:0,2)}
+#define REFL_FALLOFF            ${fmt(P.reflFalloff,3)}
+#define REFL_BLUR               ${fmt(P.reflBlur,2)}
+#define REFL_CORNER             ${fmt(P.reflCorner,2)}
+
+// ---- set these in the RetroArch shader menu (DC_* params) ----
+DC_SCALE   ${fmt(P.scale,2)}
+DC_POS_X   ${fmt(P.posX,2)}
+DC_POS_Y   ${fmt(P.posY,2)}
+DC_ASPECT  ${fmt(P.aspect,3)}
+DC_CURVE_X ${fmt(P.curveX,3)}
+DC_CURVE_Y ${fmt(P.curveY,3)}
+DC_CORNER  ${fmt(P.corner,3)}
+DC_ROOM_LIGHT ${fmt(P.roomLight,2)}
+DC_ROOM_TYPE  ${fmt(P.roomType,0)}
+DC_ROOM_TEMP  ${fmt(P.roomTemp,0)}
+DC_SPILL      ${fmt(P.spill,2)}
+DC_GLASS_LIFT ${fmt(P.glassLift,2)}
+DC_BG_ON   ${sceneLayers().bg?1:0}   // an image layer below the tube here
+DC_FG_ON   ${sceneLayers().fg?1:0}   // an image layer above it`;
+  return t;
+}
+// ---- export / import dialog ----
+const expEl=document.getElementById('export'), expText=document.getElementById('exptext'), expMsg=document.getElementById('expmsg');
+const EXPMSG=expMsg.textContent;
+function openExport(){ expText.value=exportText(); expMsg.textContent=EXPMSG; expMsg.className=''; expEl.classList.add('open'); expText.scrollTop=0; }
+function closeExport(){ expEl.classList.remove('open'); }
+document.getElementById('exp').addEventListener('click',openExport);
+document.getElementById('expclose').addEventListener('click',closeExport);
+expEl.addEventListener('mousedown',e=>{ if(e.target===expEl) closeExport(); });
+document.getElementById('expcopy').addEventListener('click',()=>{
+  const b=document.getElementById('expcopy'), done=()=>{ b.textContent='Copied ✓'; setTimeout(()=>b.textContent='Copy',1200); };
+  if(navigator.clipboard) navigator.clipboard.writeText(expText.value).then(done,()=>{ expText.select(); document.execCommand('copy'); done(); });
+  else { expText.select(); document.execCommand('copy'); done(); }
+});
+document.getElementById('expsave').addEventListener('click',()=>{
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([expText.value],{type:'text/plain'}));
+  a.download='crt-studio-params.txt'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+});
+document.getElementById('expapply').addEventListener('click',()=>{
+  const n=importText(expText.value);
+  if(!n){ expMsg.textContent='No known parameter names found.'; expMsg.className='err'; return; }
+  syncAll(); expMsg.textContent='Applied '+n+' values.'; expMsg.className='ok';
+});
+
+render();
+</script>

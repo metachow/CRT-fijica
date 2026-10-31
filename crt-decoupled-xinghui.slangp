@@ -1,0 +1,114 @@
+# =============================================================================
+#  Decoupled PHYSICS CRT in the 2000s Chinese living room (art/ scripts): a silver
+#  "数码超平" XINGHUI set on a TV cabinet, VCD player, remote, wall socket.
+#  = crt-decoupled-physics (physics 01..08 + dc-crt-physics) + dc-composite-xinghui:
+#    * like the TM20 preset, the art leaves the screen area as plain housing and the
+#      shader draws the tube, the sloped bezel and the flat frame (silver look, see
+#      decoupled/dc-composite-xinghui.slang); the room image shows beyond the frame,
+#    * no foreground pass (nothing of the room sits in front of the glass).
+#  Rebuild the texture with art/export_ra.py; geometry comes from art/common.py
+#  (art/dc_params.py prints the DC_* lines below).
+# =============================================================================
+shaders = 10
+
+# ---- physics CRT chain (unchanged) ----
+shader0 = crt-physics/01-linearize.slang
+alias0 = LinPass
+filter_linear0 = false
+scale_type0 = source
+scale0 = 1.0
+float_framebuffer0 = true
+wrap_mode0 = clamp_to_edge
+
+shader1 = crt-physics/02-beam-v.slang
+alias1 = BeamV
+filter_linear1 = false
+scale_type1 = viewport
+scale1 = 1.0
+float_framebuffer1 = true
+wrap_mode1 = clamp_to_edge
+
+shader2 = crt-physics/03-beam-h.slang
+alias2 = BeamHV
+filter_linear2 = false
+scale_type2 = viewport
+scale2 = 1.0
+float_framebuffer2 = true
+wrap_mode2 = clamp_to_edge
+
+shader3 = crt-physics/04-phosphor.slang
+alias3 = Phosphor
+filter_linear3 = false
+scale_type3 = viewport
+scale3 = 1.0
+float_framebuffer3 = true
+wrap_mode3 = clamp_to_edge
+
+shader4 = crt-physics/05-persist.slang
+alias4 = Persist
+filter_linear4 = false
+scale_type4 = viewport
+scale4 = 1.0
+float_framebuffer4 = true
+wrap_mode4 = clamp_to_edge
+
+shader5 = crt-physics/06-halo-down.slang
+alias5 = HaloDown
+filter_linear5 = true
+scale_type5 = viewport
+scale5 = 0.25
+float_framebuffer5 = true
+wrap_mode5 = clamp_to_edge
+
+shader6 = crt-physics/07-halo-blur-h.slang
+alias6 = HaloH
+filter_linear6 = true
+scale_type6 = source
+scale6 = 1.0
+float_framebuffer6 = true
+wrap_mode6 = clamp_to_edge
+
+shader7 = crt-physics/08-halo-blur-v.slang
+alias7 = HaloV
+filter_linear7 = true
+scale_type7 = source
+scale7 = 1.0
+float_framebuffer7 = true
+wrap_mode7 = clamp_to_edge
+
+# ---- decoupled CRT layer: geometry into the shared ScreenRect ----
+shader8 = decoupled/dc-crt-physics.slang
+alias8 = DCCRTPass
+filter_linear8 = true
+scale_type8 = viewport
+scale8 = 1.0
+float_framebuffer8 = true
+wrap_mode8 = clamp_to_edge
+
+# ---- decoupled composite, XINGHUI look: silver bezel + frame + reflection, room image beyond the frame ----
+shader9 = decoupled/dc-composite-xinghui.slang
+mipmap_input9 = true   # the TV-light spill reads a blurred picture from the mips
+alias9 = DCComposite
+filter_linear9 = true
+scale_type9 = viewport
+scale9 = 1.0
+
+# ---- room art (background + TV housing + props, pre-composited full-frame) ----
+textures = "Background;SpillMask"
+Background = "decoupled/textures/xinghui-room-bg.png"
+Background_linear = "true"
+Background_wrap_mode = "clamp_to_edge"
+SpillMask = "decoupled/textures/xinghui-room-spill.png"     # how much TV light each pixel receives (art/make_spill.py)
+SpillMask_linear = "true"
+SpillMask_wrap_mode = "clamp_to_edge"
+
+# ---- room on + tube placed in the TV (from art/dc_params.py) ----
+DC_BG_ON = "1.000000"
+DC_FG_ON = "0.000000"
+DC_SCALE = "0.662500"
+DC_POS_X = "0.500000"
+DC_POS_Y = "0.430556"
+DC_ASPECT = "1.333000"
+DC_CURVE_X = "0.004000"
+DC_CURVE_Y = "0.006000"
+DC_CORNER = "0.012000"

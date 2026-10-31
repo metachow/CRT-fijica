@@ -1,0 +1,5 @@
+# keep every text file LF in the repo (the shaders, tools and scripts are edited on Windows)
+* text=auto eol=lf
+*.png binary
+*.zip binary
+*.jpg binary
