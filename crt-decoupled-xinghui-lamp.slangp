@@ -1,0 +1,7 @@
+# Evening with a warm desk lamp
+# The living room (crt-decoupled-xinghui) with only its room lighting changed.
+#reference "crt-decoupled-xinghui.slangp"
+DC_ROOM_LIGHT = "0.450000"
+DC_ROOM_TYPE = "1.000000"
+DC_SPILL = "0.700000"
+DC_GLASS_LIFT = "0.150000"

@@ -127,7 +127,7 @@ vec3 dc_room_rgb()
     float K = dcp.DC_ROOM_TEMP; vec3 shift = vec3(1.0);
     int type = int(dcp.DC_ROOM_TYPE + 0.5);
     if (type == 1) K = 2700.0;                                               // incandescent bulb
-    if (type == 2) { K = 6000.0; shift = vec3(0.90, 1.0, 0.93); }             // fluorescent tube: mercury/phosphor green spike
+    if (type == 2) { K = 6200.0; shift = vec3(0.82, 1.0, 0.92); }             // fluorescent tube: mercury/phosphor green spike
     if (type == 3) K = 6500.0;                                               // daylight
     vec3 tint = dc_s2l(dc_kelvin(K)) / dc_s2l(dc_kelvin(6500.0));
     return x*x * sqrt(tint) * shift;                  // the eye half-adapts to the colour, not to the fluorescent cast

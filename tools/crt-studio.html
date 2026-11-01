@@ -409,7 +409,7 @@ vec3 dc_kelvin(float K){ float t=clamp(K,1000.0,40000.0)/100.0;
   float b=(t>=66.0)?255.0:((t<=19.0)?0.0:138.5177312231*log(t-10.0)-305.0447927307);
   return clamp(vec3(r,g,b)/255.0,0.0,1.0); }
 vec3 dc_room_rgb(){ float x=clamp(uRoomLight,0.0,1.0); float K=uRoomTemp; vec3 shift=vec3(1.0); int type=int(uRoomType+0.5);
-  if(type==1) K=2700.0; if(type==2){ K=6000.0; shift=vec3(0.90,1.0,0.93); } if(type==3) K=6500.0;
+  if(type==1) K=2700.0; if(type==2){ K=6200.0; shift=vec3(0.82,1.0,0.92); } if(type==3) K=6500.0;
   return x*x*sqrt(dc_s2l(dc_kelvin(K))/dc_s2l(dc_kelvin(6500.0)))*shift; }
 vec3 dc_light(vec3 c, vec3 extra){ return dc_l2s(dc_s2l(c)*(dc_room_rgb()+extra)); }
 // ===== mirror of decoupled/dc-composite.inc (bezel_layer / reflection_layer) — change both together =====
@@ -575,7 +575,7 @@ vec3 dc_kelvin(float K){ float t=clamp(K,1000.0,40000.0)/100.0;
   float b=(t>=66.0)?255.0:((t<=19.0)?0.0:138.5177312231*log(t-10.0)-305.0447927307);
   return clamp(vec3(r,g,b)/255.0,0.0,1.0); }
 vec3 dc_room_rgb(){ float x=clamp(uRoomLight,0.0,1.0); float K=uRoomTemp; vec3 shift=vec3(1.0); int type=int(uRoomType+0.5);
-  if(type==1) K=2700.0; if(type==2){ K=6000.0; shift=vec3(0.90,1.0,0.93); } if(type==3) K=6500.0;
+  if(type==1) K=2700.0; if(type==2){ K=6200.0; shift=vec3(0.82,1.0,0.92); } if(type==3) K=6500.0;
   return x*x*sqrt(dc_s2l(dc_kelvin(K))/dc_s2l(dc_kelvin(6500.0)))*shift; }
 vec3 dc_light(vec3 c, vec3 extra){ return dc_l2s(dc_s2l(c)*(dc_room_rgb()+extra)); }
 // TV-light spill on this layer (= dc-composite spill_colour x the layer's SpillMask)

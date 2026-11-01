@@ -1,0 +1,7 @@
+# Daytime: daylight through the window
+# The living room (crt-decoupled-xinghui) with only its room lighting changed.
+#reference "crt-decoupled-xinghui.slangp"
+DC_ROOM_LIGHT = "1.000000"
+DC_ROOM_TYPE = "3.000000"
+DC_SPILL = "0.400000"
+DC_GLASS_LIFT = "0.350000"

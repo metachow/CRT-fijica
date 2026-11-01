@@ -117,6 +117,18 @@ CRT-fijica（名字取自日语フィジカル，physical）不靠一层层叠�
 | `crt-decoupled-physics.slangp` | 物理 CRT + 深灰程序化边框，无背景 |
 | `crt-decoupled-xinghui.slangp` | 2000 年代中国客厅：银色电视、电视柜、VCD、遥控器 |
 
+客厅另有五种光照场景，每个只改 `Light:` 参数，加载后仍可以在菜单里微调：
+
+| 预设 | 光照 |
+|---|---|
+| `crt-decoupled-xinghui-day.slangp` | 白天，窗外日光 |
+| `crt-decoupled-xinghui-dusk.slangp` | 阴天傍晚：光线暗而偏冷，电视开始照亮房间 |
+| `crt-decoupled-xinghui-fluorescent.slangp` | 晚上开着吸顶日光灯：偏暗，带日光灯的灰绿色调 |
+| `crt-decoupled-xinghui-lamp.slangp` | 晚上开着暖色台灯 |
+| `crt-decoupled-xinghui-lights-off.slangp` | 深夜关灯，只有电视照亮房间 |
+
+![客厅的五种光照场景](docs/screenshots/lighting.jpg)
+
 ## 调参
 
 ### 运行时参数

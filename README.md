@@ -132,6 +132,19 @@ of a 16.7 ms frame at 60 Hz. Individual measurements vary by about 5–8%.
 | `crt-decoupled-physics.slangp` | Physical CRT + dark grey procedural bezel, no background |
 | `crt-decoupled-xinghui.slangp` | A 2000s Chinese living room: silver TV, cabinet, VCD player, remote |
 
+The living room also comes in five lighting moods; each only changes the `Light:` parameters, so it can still be
+fine-tuned in the menu:
+
+| Preset | Lighting |
+|---|---|
+| `crt-decoupled-xinghui-day.slangp` | Daytime, daylight through the window |
+| `crt-decoupled-xinghui-dusk.slangp` | Overcast dusk: dim, cool light; the TV starts to light the room |
+| `crt-decoupled-xinghui-fluorescent.slangp` | Evening under the ceiling fluorescent tube: dimmer, with its grey-green cast |
+| `crt-decoupled-xinghui-lamp.slangp` | Evening with a warm desk lamp |
+| `crt-decoupled-xinghui-lights-off.slangp` | Late night, lights off: only the TV lights the room |
+
+![The five lighting moods of the living room](docs/screenshots/lighting.jpg)
+
 ## Tuning
 
 ### Runtime parameters
