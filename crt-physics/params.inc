@@ -51,7 +51,8 @@ layout(push_constant) uniform Push
 // Emission gain (phosphor efficiency η_0). Compensates the brightness the
 // aperture-grille mask removes, so calibrated white reaches full output.
 #pragma parameter brightness    "Brightness (mask comp.)"   1.5  0.5  3.0  0.05
-// Stage 5b temporal decay: per-frame afterglow decay factor (~60fps). Physically
+// Stage 5b temporal decay: the share of a frame's light still glowing one 60 Hz frame
+// later (rescaled to the real refresh rate in 05-persist). Physically
 // red decays fastest (~0 between frames) -> the "green trailing"; but a small red
 // makes a WHITE object leave a whiter (less green/cyan) tail. persist_r 0 = pure
 // physical green trail; raise it toward persist_g for a neutral white tail.
@@ -68,13 +69,13 @@ layout(push_constant) uniform Push
 #pragma parameter vignette      "Vignette (edge falloff)"   0.12 0.0  0.60 0.02
 // Stage 1.5 raster scan: 0=progressive (240p, all lines every frame), 1=force
 // interlaced (480i, alternate fields), 2=auto (interlace when source >= 400 lines).
-// Interlace flicker/combing emerge for free via the Pass 4 feedback (off-field
-// lines show the previous field's decaying glow). Progressive is unchanged.
+// Only the current field is traced each frame; combing on motion emerges by itself.
 #pragma parameter scan_mode     "Scan (0=prog 1=int 2=auto)" 2.0 0.0 2.0 1.0
 // In interlaced mode, off-field scanlines dim to this level instead of black.
-// Real consumer-TV phosphors held the previous field's glow between fields, so
-// off-field lines stayed bright -> only MILD flicker. 0 = harsh (only current
-// field lit, strong flicker); ~0.6 = gentle flicker like a real TV; 1 = no flicker.
+// PERCEPTUAL, not phosphor physics: P22 keeps only a few % of its light after one
+// field (16.7 ms). Real 480i flickered mildly because sources filtered vertically
+// (e.g. the PS2's flicker filter) and the eye integrates over time. 0 = only the
+// current field lit (strong flicker); ~0.6 = a TV's mild flicker; 1 = none.
 #pragma parameter interlace_off "Interlace off-field level"  0.6 0.0 1.0 0.05
 // Deflection coupling: the beam is deflected further to reach screen edges, at
 // angle theta = atan(dist_from_centre / d_gun). Smaller d_gun -> theta grows
@@ -83,10 +84,9 @@ layout(push_constant) uniform Push
 // so one physical distance couples geometry to beam and brightness.
 #pragma parameter d_gun         "Gun distance (edge coupling)" 1.5 0.8 4.0 0.1
 #pragma parameter k_edge        "Edge spot elongation"        0.4 0.0 1.0 0.05
-// Stage 3c scanline contrast: an EXTRA power-law applied to the vertical scanline
-// modulation envelope only. Physically this is the beam-current->luminance power
-// law (gun/display gamma) acting on the scanline shape: the peak (env=1) is left
-// untouched so the bright band stays plump/round, while the inter-scanline valley
-// (env<1) is pushed darker -> deeper "horizontal dark lines" WITHOUT thinning the
-// beam (unlike shrinking sigma0, which spikes the peak sub-pixel). 1 = off.
+// Scanline contrast: an AESTHETIC knob outside the physical chain (gun gamma already
+// acts on the beam current in pass 01). A power law on the scanline envelope: line
+// centres (env=1) stay untouched, dark gaps (env<1) get deeper, WITHOUT thinning the
+// beam the way a smaller sigma0 would. The envelope uses each line's actual spot
+// size, so gaps that bright lines have filled by space charge stay filled. 1 = off.
 #pragma parameter scan_gamma    "Scanline contrast (gamma)"   1.25 1.0 3.0 0.05

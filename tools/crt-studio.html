@@ -269,7 +269,7 @@ const SLIDERS = [
   ["__g_crtbeam","Beam & mask","crt"],
   ["gammaGun","gun gamma (GAMMA_GUN)",1.8,3.0,0.05,2.25,null,"electron-gun V-I power law: overall contrast"],
   ["sigmaV","beam σ vertical (SIGMA0)",0.10,0.90,0.01,0.14,null,"spot height at zero current: scanline thickness"],
-  ["scanG","scanline contrast (SCAN_GAMMA)",1.0,3.0,0.05,1.25],
+  ["scanG","scanline contrast (SCAN_GAMMA)",1.0,3.0,0.05,1.25,null,"aesthetic, outside the physical chain: deepens the dark gaps between scanlines (gaps filled by bright lines stay filled)"],
   ["sigmaH","beam σ horizontal (SIGMA_H)",0.15,1.20,0.01,0.25,null,"horizontal softness / bandwidth"],
   ["ksc","bloom — space charge k (K_SC)",0.0,2.0,0.05,0.80,null,"how much bright areas fatten"],
   ["alphaSc","bloom curve α (ALPHA_SC)",0.3,1.0,0.05,0.40],
@@ -662,9 +662,10 @@ void main(){vec2 fc=gl_FragCoord.xy,uv=fc/uRes;vec2 src=vec2(textureSize(uSrc,0)
   float spx=uv.x*cols,sfx=fract(spx);int six=int(floor(spx));float spy=uv.y*rows,sfy=fract(spy);int siy=int(floor(spy));
   vec3 col=vec3(0.);
   for(int ix=-MRH;ix<=MRH;ix++){vec3 V=vconv(six+ix,sfy,siy,cols,rows,el);float sgx=sig(uSigH,dot(V,LUMA));col+=V*bw(float(ix)+0.5-sfx,sgx);}
-  // Stage 3c scanline contrast: peak-normalized vertical envelope (=1 on a line),
-  // raised to (scanG-1) -> deepens the gap, leaves the round peak untouched.
-  float env=0.,sge=uSigV*el; for(int iy=-MRV;iy<=MRV;iy++){float dy=float(iy)+0.5-sfy;env=max(env,exp(-(dy*dy)/(2.*sge*sge)));}
+  // scanline contrast (aesthetic): peak-normalized envelope from each line's ACTUAL spot (space charge
+  // included, = 02-beam-v), raised to (scanG-1) -> deepens only the gaps that are really dark
+  float env=0.; for(int iy=-MRV;iy<=MRV;iy++){vec3 Ie=gun(texture(uSrc,vec2((float(six)+0.5)/cols,(float(siy+iy)+0.5)/rows)).rgb);
+    float sge=sig(uSigV,dot(Ie,LUMA))*el,dy=float(iy)+0.5-sfy;env=max(env,exp(-(dy*dy)/(2.*sge*sge)));}
   col*=pow(env,max(uScanG-1.,0.));
   col*=grille(fc); col=col*(1.0+1.0/uEsat)/(1.0+col/uEsat)*uBright;
   o=vec4(col,1.);}`;

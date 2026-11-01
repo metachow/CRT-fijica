@@ -1,6 +1,6 @@
 #version 450
 #pragma name Persist
-// Pass 4 — Stage 5b: phosphor temporal decay (afterglow), IIR feedback.
+// Pass 4 — Stage 5b: phosphor temporal decay (afterglow), energy-conserving IIR feedback.
 //
 // Physics (Kuhn 2002 / EIA phosphor classification):
 //   - Red (Y2O2S:Eu): pure exponential, fully decayed between frames -> NO
@@ -9,12 +9,16 @@
 //     frame-to-frame -> visible afterglow. Green persists longest, giving the
 //     characteristic greenish-cyan trailing; blue slightly shorter; red absent.
 //
-// Implementation: per-channel "hold-and-decay" IIR on the linear phosphor
-// emission, persisted = max(emission, previous_persist * decay). A constant
-// per-frame decay factor approximates the power-law tail over the first few
-// (visually significant) frames — a practical approximation. This also smooths brightness transitions (a fading
-// image holds its brighter, softer-spot rendering and decays gradually instead
-// of snapping to the sharp low-current spot each frame).
+// Implementation: an energy-conserving IIR, one feedback buffer per channel.
+//     out = (1 - d) * emission + d * out_prev
+// A frame's light shows (1 - d) at once and the rest as a tail d, d^2, ... that
+// ADDS to whatever is drawn later (a trail stays visible over a bright
+// background), while a still image keeps exactly its brightness (sum = 1). This
+// equals 'prompt emission + separate tail buffer' with the tail weight tied to the
+// decay, without a second buffer. A constant per-frame d approximates the
+// power-law tail over the first few (visually significant) frames.
+// persist_* is the decay per frame at 60 Hz; d is rescaled to the real refresh
+// (content fps x subframes), so PAL 50 Hz or subframe BFI keep the same glow time.
 #include "params.inc"
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -23,6 +27,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
     vec4 OutputSize;
     vec4 OriginalSize;
     vec4 SourceSize;
+    float OriginalFPS;     // content refresh rate (0 on old RetroArch builds -> 60 assumed)
+    uint TotalSubFrames;   // shader subframes per content frame (1 = off)
 } global;
 
 #pragma stage vertex
@@ -46,12 +52,12 @@ void main()
     vec3 emission = texture(Source, vTexCoord).rgb;          // linear this-frame emission
     vec3 prev     = texture(PersistFeedback, vTexCoord).rgb; // linear last-frame persisted
 
-    // Per-channel afterglow decay. Red is small by default (physically fastest),
-    // but tunable so a white object can leave a whiter tail instead of green/cyan.
-    vec3 decay = vec3(params.persist_r, params.persist_g, params.persist_b);
+    // Per-channel decay per 60 Hz frame, rescaled to the frames actually rendered.
+    float fps   = ((global.OriginalFPS > 1.0) ? global.OriginalFPS : 60.0) * float(max(global.TotalSubFrames, 1u));
+    vec3  decay = pow(clamp(vec3(params.persist_r, params.persist_g, params.persist_b), 0.0, 0.999), vec3(60.0 / fps));
 
-    // Hold the brighter of the fresh emission or the decayed previous glow.
-    vec3 persisted = max(emission, prev * decay);
+    // Prompt part of this frame's light + the tail of all earlier frames.
+    vec3 persisted = (1.0 - decay) * emission + decay * prev;
 
     FragColor = vec4(persisted, 1.0);
 }

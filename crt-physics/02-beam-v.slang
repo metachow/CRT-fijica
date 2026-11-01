@@ -55,29 +55,31 @@ void main()
 
     // Each SOURCE scanline deposits a unit-area Gaussian; weight from its own
     // beam current. Bright lines spread into dark neighbours, not vice versa.
-    // In parallel we track a PEAK-normalized envelope (env = nearest line's
-    // Gaussian, =1 on a line centre) — the pure geometric scanline shape,
-    // independent of content — for the Stage 3c scanline-contrast power law.
+    // In parallel we track a PEAK-normalized envelope (env = the best-covering
+    // line's own Gaussian, =1 on a line centre) for the scanline-contrast knob.
+    // It uses each line's ACTUAL spot size (space charge included), so where a
+    // bright line has spread into the gap the envelope stays high and the gap is
+    // not pushed back down: scan_gamma deepens only the gaps that are really dark.
     vec3  color = vec3(0.0);
     float env   = 0.0;
-    float sig_e = params.sigma0 * elong;                     // envelope sigma (base, no space-charge)
     for (int i = -MAX_RADIUS; i <= MAX_RADIUS; i++) {
         int   line  = si + i;
         float src_y = (float(line) + 0.5) / rows;
         vec3  I_b   = texture(Source, vec2(vTexCoord.x, src_y)).rgb;  // already linear
         // Scanlines not in the current field dim to interlace_off instead of
-        // black — modelling how consumer-TV phosphor persistence held the
-        // previous field's glow, so real 480i/576i only flickered mildly.
-        // (+2)%2 keeps parity correct for negative line indices near the top.
+        // going black. A PERCEPTUAL control, not phosphor physics (P22 keeps only
+        // a few % after one field): real 480i flickered mildly mostly because
+        // sources filtered vertically (e.g. the PS2's flicker filter) and the eye
+        // integrates over time. (+2)%2 keeps parity right for negative indices.
         if (interlaced && (((line % 2) + 2) % 2) != field) I_b *= params.interlace_off;
         float sigma = spot_sigma(dot(I_b, LUMA)) * elong;   // fatter toward edges
         float dy    = float(i) + 0.5 - sf;
         color += I_b * beam_weight(dy, sigma);
-        env    = max(env, exp(-(dy * dy) / (2.0 * sig_e * sig_e)));   // peak-normalized
+        env    = max(env, exp(-(dy * dy) / (2.0 * sigma * sigma)));   // peak-normalized, actual spot
     }
-    // Stage 3c: extra power-law on the scanline modulation. env==1 at the beam
-    // centre (peak untouched, stays round); env<1 in the gap is pushed darker,
-    // deepening the horizontal dark lines. scan_gamma==1 -> exponent 0 -> no-op.
+    // Scanline contrast (AESTHETIC, not part of the physical chain): a power law
+    // on the envelope. env==1 at a beam centre (peak untouched); env<1 in a gap
+    // is pushed darker. scan_gamma==1 -> exponent 0 -> off.
     color *= pow(env, max(params.scan_gamma - 1.0, 0.0));
     FragColor = vec4(color, 1.0);
 }

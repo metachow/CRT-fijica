@@ -50,7 +50,7 @@ CRT-fijica（名字取自日语フィジカル，physical）不靠一层层叠�
 
 同一张 *Contra* 原生帧（256×224）分别经过 RetroArch 自带的几个经典 CRT 着色器和本项目处理。全部在 RetroArch 中实际运行：
 - Vulkan 驱动，4:3 全屏输出 2880×2160，GPU 截图；
-- 各着色器都用默认预设，本项目用 `crt-decoupled-physics`，屏幕放大到占满画面。
+- 各着色器都用默认预设，本项目用 `crt-decoupled-physics`，屏幕放大到占满画面，并关闭房间光（`DC_ROOM_LIGHT` 0），和其他着色器一样是纯黑底。
 
 下面每张都是 1:1 像素的局部，没有缩放；右下角标出了区域在画面中的位置。
 
@@ -76,7 +76,7 @@ CRT-fijica（名字取自日语フィジカル，physical）不靠一层层叠�
 
 ![岩石与浪花](docs/comparison/water.png)
 
-本项目默认开启了房间光照（`DC_ROOM_LIGHT` 1、`DC_GLASS_LIFT` 0.3），玻璃会反射一点室内光，所以黑色比其他着色器略灰；把 `DC_ROOM_LIGHT` 调到 0 就是纯黑。
+实际使用时本项目默认开着房间光（`DC_ROOM_LIGHT` 1），玻璃会反射一点室内光，黑色会略微泛灰。
 
 ## 安装
 
@@ -109,13 +109,13 @@ CRT-fijica（名字取自日语フィジカル，physical）不靠一层层叠�
 | `gamma_gun` | 电子枪伽马（整体对比度） |
 | `sigma0` / `sigma_h` | 电子束垂直 / 水平宽度（扫描线粗细 / 水平柔和度） |
 | `k_sc` / `alpha_sc` | 亮部变粗的程度 / 曲线形状 |
-| `scan_gamma` | 扫描线对比度 |
+| `scan_gamma` | 扫描线对比度：加深暗处扫描线之间的缝。这是审美参数，不属于物理链；亮行被空间电荷填满的缝不受影响 |
 | `mask_type` / `mask_pitch` / `mask_strength` | 掩膜类型 / 间距（输出像素）/ 强度 |
 | `e_sat` / `brightness` | 荧光粉饱和拐点 / 亮度 |
-| `persist_r/g/b` | 各通道余辉 |
+| `persist_r/g/b` | 各通道余辉：每帧的光在 60 Hz 下一帧还剩的比例（按实际刷新率换算），拖尾叠加在新画面上 |
 | `halo_weight` / `halo_spread` | 玻璃光晕强度 / 半径 |
 | `vignette` / `d_gun` / `k_edge` | 边缘暗角 / 偏转距离 / 边缘光斑拉长 |
-| `scan_mode` / `interlace_off` | 逐行、隔行或自动 / 隔行时另一场的亮度 |
+| `scan_mode` / `interlace_off` | 逐行、隔行或自动 / 隔行时另一场的亮度（感知参数，控制闪烁程度） |
 
 **布局（`Layout:`）**
 
