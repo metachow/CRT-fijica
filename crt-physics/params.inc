@@ -52,7 +52,7 @@ layout(push_constant) uniform Push
 // aperture-grille mask removes, so calibrated white reaches full output.
 #pragma parameter brightness    "Brightness (mask comp.)"   1.5  0.5  3.0  0.05
 // Stage 5b temporal decay: the share of a frame's light still glowing one 60 Hz frame
-// later (rescaled to the real refresh rate in 05-persist). Physically
+// later (rescaled to the real refresh rate in 04-phosphor). Physically
 // red decays fastest (~0 between frames) -> the "green trailing"; but a small red
 // makes a WHITE object leave a whiter (less green/cyan) tail. persist_r 0 = pure
 // physical green trail; raise it toward persist_g for a neutral white tail.

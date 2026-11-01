@@ -83,7 +83,7 @@ CRT-fijica（名字取自日语フィジカル，physical）不靠一层层叠�
 
 ## 性能
 
-同样的输入和输出（2880×2160），在 RetroArch 里关闭垂直同步和音频同步、不限帧率运行，按每帧耗时比较。用两次不同帧数的总耗时之差计算，扣除了启动和着色器编译时间。测试环境：RTX 4070 SUPER，Vulkan。
+同样的输入，在 RetroArch 里关闭垂直同步和音频同步、不限帧率运行，按每帧耗时比较。各着色器之间在同样的 4:3 输出（2880×2160）下比较；本项目的两个完整预设按它们实际使用的 16:9 全屏（3840×2160）测量。用两次不同帧数的总耗时之差计算，扣除了启动和着色器编译时间。测试环境：RTX 4070 SUPER，Vulkan。
 
 | 着色器 | 每帧耗时 | 帧率 |
 |---|---|---|
@@ -92,12 +92,12 @@ CRT-fijica（名字取自日语フィジカル，physical）不靠一层层叠�
 | crt-geom | 0.76 ms | ~1300 fps |
 | crt-guest-advanced | 0.94 ms | ~1060 fps |
 | crt-royale | 0.95 ms | ~1050 fps |
+| **CRT-fijica**，只画 CRT（同上面对比所用） | 0.99 ms | ~1010 fps |
 | crt-lottes | 1.18 ms | ~850 fps |
-| **CRT-fijica**，只画 CRT（同上面对比所用） | 1.60 ms | ~620 fps |
-| **CRT-fijica** `crt-decoupled-physics`（加边框与倒影） | 1.78 ms | ~560 fps |
-| **CRT-fijica** `crt-decoupled-xinghui`（加客厅场景） | 1.94 ms | ~520 fps |
+| **CRT-fijica** `crt-decoupled-physics`（加边框与倒影），16:9 3840×2160 | 1.72 ms | ~580 fps |
+| **CRT-fijica** `crt-decoupled-xinghui`（加客厅场景），16:9 3840×2160 | 1.73 ms | ~580 fps |
 
-本项目是这几个里最重的，主要开销在逐像素的电子束卷积。不过即使是完整的客厅场景，在 60 Hz 下也只占每帧 16.7 ms 预算的约 12%。各次测量之间约有 5–8% 的波动。
+只画 CRT 时，开销和 guest-advanced、royale 在同一档。即使是 4K 下完整的客厅场景，在 60 Hz 下也只占每帧 16.7 ms 预算的约 10%。各次测量之间约有 5–8% 的波动。
 
 ## 安装
 
@@ -189,9 +189,8 @@ CRT-fijica（名字取自日语フィジカル，physical）不靠一层层叠�
  │ 01 linearize      信号解码，电子枪响应 → 线性束流
  │ 02 beam-v         垂直方向的电子束卷积（能量守恒），逐行 / 隔行扫描
  │ 03 beam-h         水平方向的电子束卷积
- │ 04 phosphor       荧光粉掩膜与饱和
- │ 05 persist        荧光粉余辉
- │ 06–08 halo        玻璃散射光晕（1/4 分辨率，可分离高斯）
+ │ 04 phosphor       荧光粉掩膜、饱和与余辉
+ │ 05–07 halo        玻璃散射光晕（1/4 分辨率，可分离高斯）
  ▼
  │ dc-crt-physics    把画面按屏幕几何弯曲、定位
  │ dc-composite      边框、屏幕倒影、背景、场景光照
@@ -263,7 +262,7 @@ python dc_params.py     # 生成 dc-composite-xinghui.slang 和预设的布局�
 
 ```
 crt-decoupled-*.slangp   预设
-crt-physics/             物理 CRT（pass 01–08）
+crt-physics/             物理 CRT（pass 01–07）
 decoupled/               屏幕几何、边框与场景合成、贴图
 tools/                   CRT Studio 与命令行工具
 art/                     场景美术脚本

@@ -1,6 +1,6 @@
 #version 450
 #pragma name HaloDown
-// Pass 5 — Stage 6 (halation) downsample. Reads the persisted linear emission and
+// Pass 4 — Stage 6 (halation) downsample. Reads the persisted linear emission and
 // box-downsamples it to 1/4 viewport for the cheap wide blur that follows. Four
 // bilinear taps at ±1 source-texel cover a 4x4 block (16 samples) so thin bright
 // features still contribute to the glow.

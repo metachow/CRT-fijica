@@ -425,15 +425,14 @@ void main()
     ScreenRect r = dc_get_rect(out_aspect);
     float inside; vec2 sp = dc_vp_to_screen(vTexCoord, r, inside);
     vec2 segA = seam_inner_A(r.curvature, r.aspect);
-
-    vec3 bez  = bezel_layer(vTexCoord, r, segA);
     vec3 crt  = textureLod(Source, vTexCoord, 0.0).rgb;
     // room light bounced off the glass + grey-green phosphor screen: lifts the blacks in a lit room
     crt = dc_l2s(dc_s2l(crt) + 0.02 * dcp.DC_GLASS_LIFT * dc_room_rgb() * vec3(0.92, 1.0, 0.96));
 
     // screen-edge mask — NOT gated by the boolean `inside` (that would hard-clip the corner AA).
     float scr = dc_corner_mask(sp, r.aspect, r.corner, 2.0*global.OutputSize.w);
-    vec3 outp = mix(bez, crt, scr);
+    // the housing is only needed where the screen doesn't fully cover the pixel (most of the frame skips it)
+    vec3 outp = (scr < 1.0) ? mix(bezel_layer(vTexCoord, r, segA), crt, scr) : crt;
 
     // ±1 LSB TPDF dither: breaks the halation glow's 8-bit banding into imperceptible noise.
     vec2 dp = gl_FragCoord.xy;

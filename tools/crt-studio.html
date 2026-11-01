@@ -543,12 +543,12 @@ void main(){
   float inside; vec2 sp=dc_vp_to_screen(vp,r,inside);
   // TUBE ENTRY: CRT + procedural bezel/frame + reflection, as a layer with COVERAGE ALPHA.
   // Background/foreground are separate image layers composited by the render loop.
-  vec4 bez = bezel_layer(vp,r);              // premultiplied: bezel/frame (+ backdrop or frame shadow)
   vec3 crt=textureLod(uCRT, vp, 0.0).rgb;    // CRT layer (curved into the tube)
   crt=dc_l2s(dc_s2l(crt)+0.02*uGlassLift*dc_room_rgb()*vec3(0.92,1.0,0.96));   // room light off the glass
   // screen-edge mask — NOT gated by the boolean inside, which would hard-clip the corner AA.
   float scr=dc_corner_mask(sp,r.aspect,r.corner,2.0/uRes.y);
-  vec4 outp=mix(bez,vec4(crt,1.0),scr);     // premultiplied — clean edge over layers
+  // the housing only where the screen doesn't fully cover the pixel (= dc-composite); premultiplied over layers
+  vec4 outp=(scr<1.0)?mix(bezel_layer(vp,r),vec4(crt,1.0),scr):vec4(crt,1.0);
   // ±1 LSB TPDF dither — breaks the halation glow's 8-bit banding (see dc-composite)
   vec2 dp=gl_FragCoord.xy; float tpdf=(hash21(dp)+hash21(dp+41.7)-1.0)/255.0;
   FragColor=vec4(clamp(outp.rgb+tpdf*outp.a,0.0,outp.a), outp.a);

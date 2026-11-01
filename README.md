@@ -93,7 +93,9 @@ are slightly lifted.
 
 ## Performance
 
-Same input and output (2880×2160), RetroArch running uncapped (no vsync, no audio sync), compared by time per frame.
+Same input, RetroArch running uncapped (no vsync, no audio sync), compared by time per frame. The shaders are
+compared at the same 4:3 output (2880×2160); this project's full presets are listed at the 16:9 fullscreen
+(3840×2160) they are meant for.
 The time is taken from the difference between two runs of different length, which cancels start-up and shader
 compilation. Test system: RTX 4070 SUPER, Vulkan.
 
@@ -104,13 +106,13 @@ compilation. Test system: RTX 4070 SUPER, Vulkan.
 | crt-geom | 0.76 ms | ~1300 fps |
 | crt-guest-advanced | 0.94 ms | ~1060 fps |
 | crt-royale | 0.95 ms | ~1050 fps |
+| **CRT-fijica**, CRT only (as in the comparison above) | 0.99 ms | ~1010 fps |
 | crt-lottes | 1.18 ms | ~850 fps |
-| **CRT-fijica**, CRT only (as in the comparison above) | 1.60 ms | ~620 fps |
-| **CRT-fijica** `crt-decoupled-physics` (+ bezel and reflection) | 1.78 ms | ~560 fps |
-| **CRT-fijica** `crt-decoupled-xinghui` (+ living-room scene) | 1.94 ms | ~520 fps |
+| **CRT-fijica** `crt-decoupled-physics` (+ bezel and reflection), 16:9 3840×2160 | 1.72 ms | ~580 fps |
+| **CRT-fijica** `crt-decoupled-xinghui` (+ living-room scene), 16:9 3840×2160 | 1.73 ms | ~580 fps |
 
-This project is the heaviest of the group; most of the time goes into the per-pixel beam convolution. Even the full
-living-room scene uses about 12% of a 16.7 ms frame at 60 Hz. Individual measurements vary by about 5–8%.
+The CRT alone costs about the same as guest-advanced and royale. Even the full living-room scene at 4K uses about 10%
+of a 16.7 ms frame at 60 Hz. Individual measurements vary by about 5–8%.
 
 ## Installation
 
@@ -203,9 +205,8 @@ game frame
  │ 01 linearize      signal decode, gun response → linear beam current
  │ 02 beam-v         vertical beam convolution (energy-conserving), progressive / interlaced scan
  │ 03 beam-h         horizontal beam convolution
- │ 04 phosphor       phosphor mask and saturation
- │ 05 persist        phosphor persistence
- │ 06–08 halo        glass halation (1/4 resolution, separable Gaussian)
+ │ 04 phosphor       phosphor mask, saturation and persistence
+ │ 05–07 halo        glass halation (1/4 resolution, separable Gaussian)
  ▼
  │ dc-crt-physics    curve and place the picture by the screen layout
  │ dc-composite      bezel, screen reflection, background, scene lighting
@@ -286,7 +287,7 @@ python dc_params.py     # dc-composite-xinghui.slang and the preset's layout val
 
 ```
 crt-decoupled-*.slangp   presets
-crt-physics/             physical CRT (passes 01–08)
+crt-physics/             physical CRT (passes 01–07)
 decoupled/               screen layout, bezel and scene composite, textures
 tools/                   CRT Studio and command-line tools
 art/                     scene art scripts

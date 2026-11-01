@@ -1,17 +1,17 @@
 # =============================================================================
 #  Decoupled bezel + PHYSICS CRT.
-#  The full physically-based CRT chain (crt-physics passes 01..08) renders the
+#  The full physically-based CRT chain (crt-physics passes 01..07) renders the
 #  emission + glass halation, then the decoupled contract takes over:
-#    Pass 8  dc-crt-physics — applies the SHARED ScreenRect geometry so the curved
+#    Pass 7  dc-crt-physics — applies the SHARED ScreenRect geometry so the curved
 #                             CRT sits in the bezel's screen hole (aligned), linear.
-#    Pass 9  dc-composite   — procedural bezel outside the rect + CRT inside +
+#    Pass 8  dc-composite   — procedural bezel outside the rect + CRT inside +
 #                             analytic reflection of the CRT onto the frame.
 #  The CRT layer, the bezel and the reflection all read the same layout (a
 #  spherical faceplate, decoupled/dc-screen-layout.inc), so they bend identically.
 #  Set the tube via the DC_* params (Layout: scale / pos / aspect / curvature X,Y /
 #  corner) in the RetroArch shader menu.
 # =============================================================================
-shaders = 10
+shaders = 9
 
 # ---- physics CRT chain (unchanged) ----
 shader0 = crt-physics/01-linearize.slang
@@ -25,8 +25,12 @@ wrap_mode0 = clamp_to_edge
 shader1 = crt-physics/02-beam-v.slang
 alias1 = BeamV
 filter_linear1 = false
-scale_type1 = viewport
-scale1 = 1.0
+# beam-v only varies with the source COLUMN horizontally (it samples column centres), so it runs at
+# source width x viewport height: ~1/11 of the work at 4K, identical result
+scale_type_x1 = source
+scale_x1 = 1.0
+scale_type_y1 = viewport
+scale_y1 = 1.0
 float_framebuffer1 = true
 wrap_mode1 = clamp_to_edge
 
@@ -39,60 +43,52 @@ float_framebuffer2 = true
 wrap_mode2 = clamp_to_edge
 
 shader3 = crt-physics/04-phosphor.slang
-alias3 = Phosphor
+alias3 = Persist
 filter_linear3 = false
 scale_type3 = viewport
 scale3 = 1.0
 float_framebuffer3 = true
 wrap_mode3 = clamp_to_edge
 
-shader4 = crt-physics/05-persist.slang
-alias4 = Persist
-filter_linear4 = false
+shader4 = crt-physics/05-halo-down.slang
+alias4 = HaloDown
+filter_linear4 = true
 scale_type4 = viewport
-scale4 = 1.0
+scale4 = 0.25
 float_framebuffer4 = true
 wrap_mode4 = clamp_to_edge
 
-shader5 = crt-physics/06-halo-down.slang
-alias5 = HaloDown
+shader5 = crt-physics/06-halo-blur-h.slang
+alias5 = HaloH
 filter_linear5 = true
-scale_type5 = viewport
-scale5 = 0.25
+scale_type5 = source
+scale5 = 1.0
 float_framebuffer5 = true
 wrap_mode5 = clamp_to_edge
 
-shader6 = crt-physics/07-halo-blur-h.slang
-alias6 = HaloH
+shader6 = crt-physics/07-halo-blur-v.slang
+alias6 = HaloV
 filter_linear6 = true
 scale_type6 = source
 scale6 = 1.0
 float_framebuffer6 = true
 wrap_mode6 = clamp_to_edge
 
-shader7 = crt-physics/08-halo-blur-v.slang
-alias7 = HaloV
+# ---- decoupled CRT layer: geometry into the shared ScreenRect (replaces 09) ----
+shader7 = decoupled/dc-crt-physics.slang
+alias7 = DCCRTPass
 filter_linear7 = true
-scale_type7 = source
+scale_type7 = viewport
 scale7 = 1.0
 float_framebuffer7 = true
 wrap_mode7 = clamp_to_edge
 
-# ---- decoupled CRT layer: geometry into the shared ScreenRect (replaces 09) ----
-shader8 = decoupled/dc-crt-physics.slang
-alias8 = DCCRTPass
+# ---- decoupled composite: bezel + reflection (final pass) ----
+shader8 = decoupled/dc-composite.slang
+mipmap_input8 = true   # the TV-light spill reads a blurred picture from the mips
 filter_linear8 = true
 scale_type8 = viewport
 scale8 = 1.0
-float_framebuffer8 = true
-wrap_mode8 = clamp_to_edge
-
-# ---- decoupled composite: bezel + reflection (final pass) ----
-shader9 = decoupled/dc-composite.slang
-mipmap_input9 = true   # the TV-light spill reads a blurred picture from the mips
-filter_linear9 = true
-scale_type9 = viewport
-scale9 = 1.0
 
 # dc-composite samples a Background texture (used only when DC_BG_ON=1; here it stays 0, so this
 # is just a placeholder to satisfy the binding — the device-art preset overrides it).

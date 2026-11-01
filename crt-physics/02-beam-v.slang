@@ -1,7 +1,8 @@
 #version 450
 // Pass 1 — Stage 3: vertical beam PSF convolution (energy-conserving) +
 //          Stage 1.5: interlaced/progressive raster scan (field selection).
-// Renders at viewport resolution so the sub-scanline beam profile is resolved.
+// Renders at SOURCE width x VIEWPORT height: the sub-scanline beam profile is resolved
+// vertically, while horizontally the result only changes per source column.
 // Input Source = linear beam current (Pass 0), sampled at source-row centres.
 #include "params.inc"
 
@@ -41,7 +42,7 @@ void main()
 
     // Stage 1.5: raster scan mode. In interlaced (480i) only the current field's
     // scanlines are traced this frame; the other field's lines get I_b = 0 and
-    // show their previous-field decaying glow via the Pass 4 feedback (flicker +
+    // show their previous-field decaying glow via the Pass 3 (phosphor) feedback (flicker +
     // combing emerge for free). Progressive (240p) traces every line every frame.
     bool interlaced = (params.scan_mode > 1.5) ? (rows >= 400.0)    // 2 = auto
                                                : (params.scan_mode > 0.5); // 1 = force
@@ -81,5 +82,8 @@ void main()
     // on the envelope. env==1 at a beam centre (peak untouched); env<1 in a gap
     // is pushed darker. scan_gamma==1 -> exponent 0 -> off.
     color *= pow(env, max(params.scan_gamma - 1.0, 0.0));
-    FragColor = vec4(color, 1.0);
+    // alpha: this column's HORIZONTAL spot for pass 03, as 1/(2 sigma_h^2). Computed once here (source width)
+    // instead of in every one of beam-h's taps at full resolution.
+    float sig_h = spot_sigma_base(params.sigma_h, dot(color, LUMA));
+    FragColor = vec4(color, 1.0 / (2.0 * sig_h * sig_h));
 }

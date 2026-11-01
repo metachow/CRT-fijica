@@ -1,6 +1,6 @@
 #version 450
 #pragma name HaloV
-// Pass 7 — Stage 6 halation, vertical Gaussian blur at 1/4 res (separable).
+// Pass 6 — Stage 6 halation, vertical Gaussian blur at 1/4 res (separable).
 // Completes the wide 2D glass-scatter Gaussian started in the horizontal pass.
 #include "params.inc"
 

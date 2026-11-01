@@ -44,10 +44,10 @@ void main()
     vec3 color = vec3(0.0);
     for (int i = -MAX_RADIUS; i <= MAX_RADIUS; i++) {
         float src_x = (float(si + i) + 0.5) / cols;
-        vec3  s     = texture(Source, vec2(src_x, vTexCoord.y)).rgb;  // vertically-convolved, linear
-        float sigma = spot_sigma_base(params.sigma_h, dot(s, LUMA));  // wider horizontal spot
+        vec4  s     = texture(Source, vec2(src_x, vTexCoord.y));  // vertically-convolved, linear; .a = 1/(2 sigma_h^2)
         float dx    = float(i) + 0.5 - sf;
-        color += s * beam_weight(dx, sigma);
+        // unit-area Gaussian of that column's spot (the same as beam_weight(dx, sigma_h))
+        color += s.rgb * (exp(-dx * dx * s.a) * sqrt(s.a / 3.14159265));
     }
     FragColor = vec4(color, 1.0);
 }

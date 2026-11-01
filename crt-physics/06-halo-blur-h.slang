@@ -1,6 +1,6 @@
 #version 450
 #pragma name HaloH
-// Pass 6 — Stage 6 halation, horizontal Gaussian blur at 1/4 res (separable).
+// Pass 5 — Stage 6 halation, horizontal Gaussian blur at 1/4 res (separable).
 // sigma is in this pass's texels: halo_spread is in full-viewport px and the pass
 // runs at 1/4 res, so sigma_texels = halo_spread * 0.25 (must match the preset's
 // 0.25 downscale). Weights are normalized (a blur preserves DC / brightness).

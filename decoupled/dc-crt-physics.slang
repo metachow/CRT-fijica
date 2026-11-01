@@ -2,7 +2,7 @@
 // =============================================================================
 //  Decoupled CRT LAYER — PHYSICS edition.
 //  Runs AFTER the full physics emission + halation chain (crt-physics passes
-//  01..08). Instead of warping the FULL viewport (the old standalone
+//  01..07). Instead of warping the FULL viewport (the old standalone
 //  09-composite, removed), this applies the SHARED ScreenRect geometry (dc-screen-layout.inc)
 //  so the curved CRT sits exactly in the bezel's screen hole — same curvature,
 //  position and scale as the bezel/reflection. Output: display-referred, full
