@@ -1,262 +1,308 @@
 # CRT-fijica
 
-**受物理启发的 RetroArch CRT 着色器，附带可独立替换的边框与场景。**
+**English** · [简体中文](README.zh-CN.md)
 
-![2000 年代的客厅：银色"数码超平"电视、电视柜、VCD 和遥控器](docs/screenshots/room-day.jpg)
+**A physically inspired CRT shader for RetroArch, with a bezel and scene that can be swapped independently.**
 
-CRT-fijica（名字取自日语フィジカル，physical）不靠一层层叠特效，而是沿着显像管的物理过程逐级计算：
-电子枪 → 电子束 → 荧光粉 → 余辉 → 玻璃散射。
-扫描线的粗细、亮部的泛光、边缘的暗角、玻璃的光晕，都是这条链自然得出的结果。
+![A 2000s living room: a silver "Digital Super Flat" TV, a TV cabinet, a VCD player and a remote](docs/screenshots/room-day.jpg)
 
-屏幕之外的部分是独立的一层，和 CRT 只通过一份屏幕几何约定对接：
-- 斜面边框和平框；
-- 屏幕在边框上的倒影；
-- 背景场景；
-- 房间光照与电视溢光。
+CRT-fijica (from the Japanese フィジカル, *physical*) does not stack effects one on top of another. It follows the
+tube's physical process step by step: electron gun → beam → phosphor → persistence → glass scattering. Scanline
+thickness, bloom in bright areas, edge falloff and the halo in the glass all come out of that chain.
 
-两边可以各自替换，曲率和位置始终一致。
+Everything outside the screen is a separate layer that meets the CRT through a single shared screen layout:
+- a sloped bezel and a flat frame;
+- the picture's reflection on the bezel;
+- a background scene;
+- room lighting and the TV's light spilling onto its surroundings.
 
-## 特点
+Either side can be replaced on its own; curvature and position always stay in sync.
 
-- **物理 CRT**：
-  - 电子束的空间电荷展宽让亮部变粗；
-  - 能量守恒的扫描线卷积在纯色区域也保留扫描线；
-  - 三种荧光粉掩膜（栅格 / 槽孔 / 点阵）；
-  - 分通道余辉（绿、蓝有拖尾，红几乎没有）；
-  - 玻璃散射光晕；
-  - 支持逐行与隔行扫描。
-- **球面荧光屏**：画面按偏转角铺在一块球面玻璃上，横竖两个方向的曲率可以分别设置。
-- **几何建模的边框**：内沿、斜面、外沿、平框都是带法线的曲面，统一由一个光源照明（漫反射 + 塑料高光）。亮边和暗边随光源方向变化，不用手工绘制。
-- **场景光照**：
-  - 房间亮度可以从白天连续调到关灯；
-  - 光源可选白炽灯、荧光灯、日光或自定义色温；
-  - 电视画面会照亮周围的边框、柜面和墙；
-  - 有光泽的柜面会映出画面倒影。
-- **CRT Studio**：浏览器里的调参工具，和着色器逐行对应，所见即所得，一键导出参数。
+## Features
 
-## 截图
+- **Physical CRT**:
+  - space-charge broadening of the beam makes bright areas fatter;
+  - energy-conserving scanline convolution keeps scanlines even in flat colour areas;
+  - three phosphor masks (aperture grille / slot / dot);
+  - per-channel phosphor persistence;
+  - halation in the glass;
+  - progressive and interlaced scan.
+- **Spherical faceplate**: the raster is laid onto a curved glass by deflection angle; horizontal and vertical
+  curvature can be set separately.
+- **Geometrically modelled bezel**: lip, slopes, outer edge and frame are surfaces with normals, all lit by one light
+  (diffuse + plastic sheen). Bright and dark edges follow the light direction instead of being painted on.
+- **Scene lighting**:
+  - room light from daylight down to lights-off on a continuous slider;
+  - bulb, fluorescent, daylight or a custom colour temperature;
+  - the picture lights up the bezel, the cabinet and the wall around it;
+  - glossy surfaces reflect the picture.
+- **CRT Studio**: a browser tool that mirrors the shader line for line, for live tuning and one-click export.
 
-| 纯物理预设：程序化边框 | 客厅场景，夜里关灯 |
+## Screenshots
+
+| Physics preset: procedural bezel | Living room, lights off |
 |---|---|
-| ![物理 CRT + 程序化边框](docs/screenshots/physics.jpg) | ![关灯后，画面的暖色光照亮柜面、插座和墙](docs/screenshots/room-night.jpg) |
+| ![Physical CRT with the procedural bezel](docs/screenshots/physics.jpg) | ![Lights off: the picture's warm light falls on the cabinet, the socket and the wall](docs/screenshots/room-night.jpg) |
 
-1:1 局部：扫描线随亮度变粗，荧光粉栅格和泛光清晰可见。
+1:1 detail: scanlines grow thicker with brightness; the phosphor grille and the bloom are clearly visible.
 
-![1:1 局部](docs/screenshots/closeup.png)
+![1:1 detail](docs/screenshots/closeup.png)
 
-截图均为 3840×2160 原图。扫描线和掩膜是只有几个像素宽的周期纹理，缩小显示时会出现摩尔纹，点开按 100% 查看最准确。
+All screenshots are 3840×2160 originals. Scanlines and the mask are periodic patterns only a few pixels wide, so they
+show moiré when scaled down; open the image at 100% to judge them.
 
-## 与其他着色器对比
+## Comparison with other shaders
 
-同一张 *Contra* 原生帧（256×224）分别经过 RetroArch 自带的几个经典 CRT 着色器和本项目处理。全部在 RetroArch 中实际运行：
-- Vulkan 驱动，4:3 全屏输出 2880×2160，GPU 截图；
-- 各着色器都用默认预设，本项目用 `crt-decoupled-physics`，屏幕放大到占满画面，并关闭房间光（`DC_ROOM_LIGHT` 0），和其他着色器一样是纯黑底。
+The same native *Contra* frame (256×224) through several classic CRT shaders that ship with RetroArch, and through
+this project. Everything was actually run in RetroArch:
+- Vulkan driver, 4:3 fullscreen output at 2880×2160, GPU screenshots;
+- every other shader with its default preset;
+- this project with a CRT-only comparison preset: the same physics chain as `crt-decoupled-physics`, but without the
+  bezel, frame and reflection, so the area outside the screen is pure black like the others; the screen fills the
+  output and the room light is off (`DC_ROOM_LIGHT` 0).
 
-下面每张都是 1:1 像素的局部，没有缩放；右下角标出了区域在画面中的位置。
+Each image below is a 1:1 crop with no scaling; the last tile shows where the region sits in the frame.
 
-**星空与奖章**：单个像素的星星和细小的高亮精灵，主要看亮点外围的晕染：光晕扩散得多远、衰减得是否自然
+**Stars & medals**: single-pixel stars and small bright sprites. Look at the glow around the bright dots: how far it
+reaches and whether it fades out naturally.
 
-![星空与奖章](docs/comparison/stars.png)
+![Stars & medals](docs/comparison/stars.png)
 
-本项目的光晕平滑地一直衰减下去：整条管线在浮点帧缓冲里计算，输出前再加一层抖动，暗部不会出现色彩断层。crt-royale 的光晕在 8 位帧缓冲里、以低分辨率计算，暗部只剩几级灰度，星星外面会出现一圈边缘清楚的暗圈。
+This project's glow fades smoothly all the way out: the whole chain runs in float framebuffers and the output is
+dithered, so the dark end shows no banding. crt-royale computes its glow at low resolution in 8-bit framebuffers;
+only a few grey levels are left in the dark end, which leaves a hard-edged dark ring around each star.
 
-**雪山**：大片亮部和抖动的白点
+**Snowy peaks**: large bright areas and dithered white pixels
 
-![雪山](docs/comparison/snow.png)
+![Snowy peaks](docs/comparison/snow.png)
 
-**人物与树丛**：细小的绿色细节和肤色
+**Soldier & trees**: fine green detail and skin tones
 
-![人物与树丛](docs/comparison/soldier.png)
+![Soldier & trees](docs/comparison/soldier.png)
 
-**草地边缘**：亮绿到黑的明暗交界
+**Grass edge**: the transition from bright green to black
 
-![草地边缘](docs/comparison/grass.png)
+![Grass edge](docs/comparison/grass.png)
 
-**岩石与浪花**：暗部层次和白色高光
+**Rocks & surf**: shadow detail and white highlights
 
-![岩石与浪花](docs/comparison/water.png)
+![Rocks & surf](docs/comparison/water.png)
 
-实际使用时本项目默认开着房间光（`DC_ROOM_LIGHT` 1），玻璃会反射一点室内光，黑色会略微泛灰。
+In normal use the room light is on by default (`DC_ROOM_LIGHT` 1): the glass reflects a little room light, so blacks
+are slightly lifted.
 
-## 安装
+## Performance
 
-1. 使用支持 slang 着色器的视频驱动：Vulkan（推荐）、D3D11/12 或 glcore。
-2. 把本仓库放进 RetroArch 的 `shaders` 目录，或者建一个链接。Windows 上可以这样做：
+Same input and output (2880×2160), RetroArch running uncapped (no vsync, no audio sync), compared by time per frame.
+The time is taken from the difference between two runs of different length, which cancels start-up and shader
+compilation. Test system: RTX 4070 SUPER, Vulkan.
+
+| Shader | Time per frame | Frame rate |
+|---|---|---|
+| Nearest (no shader: RetroArch's own overhead) | 0.26 ms | ~3800 fps |
+| crt-easymode | 0.42 ms | ~2400 fps |
+| crt-geom | 0.76 ms | ~1300 fps |
+| crt-guest-advanced | 0.94 ms | ~1060 fps |
+| crt-royale | 0.95 ms | ~1050 fps |
+| crt-lottes | 1.18 ms | ~850 fps |
+| **CRT-fijica**, CRT only (as in the comparison above) | 1.60 ms | ~620 fps |
+| **CRT-fijica** `crt-decoupled-physics` (+ bezel and reflection) | 1.78 ms | ~560 fps |
+| **CRT-fijica** `crt-decoupled-xinghui` (+ living-room scene) | 1.94 ms | ~520 fps |
+
+This project is the heaviest of the group; most of the time goes into the per-pixel beam convolution. Even the full
+living-room scene uses about 12% of a 16.7 ms frame at 60 Hz. Individual measurements vary by about 5–8%.
+
+## Installation
+
+1. Use a video driver that supports slang shaders: Vulkan (recommended), D3D11/12 or glcore.
+2. Put this repository into RetroArch's `shaders` folder, or link it there. On Windows:
 
    ```bat
-   mklink /J "<RetroArch>\shaders\CRT-fijica" "<仓库目录>"
+   mklink /J "<RetroArch>\shaders\CRT-fijica" "<repository folder>"
    ```
 
-3. 在 RetroArch 菜单中依次进入 **着色器 → 加载预设**，选择一个预设。
+3. In RetroArch, go to **Shaders → Load Preset** and pick a preset.
 
-## 预设
+## Presets
 
-| 预设 | 内容 |
+| Preset | Contents |
 |---|---|
-| `crt-decoupled-physics.slangp` | 物理 CRT + 深灰程序化边框，无背景 |
-| `crt-decoupled-xinghui.slangp` | 2000 年代中国客厅：银色电视、电视柜、VCD、遥控器 |
+| `crt-decoupled-physics.slangp` | Physical CRT + dark grey procedural bezel, no background |
+| `crt-decoupled-xinghui.slangp` | A 2000s Chinese living room: silver TV, cabinet, VCD player, remote |
 
-## 调参
+## Tuning
 
-### 运行时参数
+### Runtime parameters
 
-可以在 RetroArch 的着色器参数菜单里直接调。
+Adjustable in RetroArch's shader parameter menu.
 
 **CRT**
 
-| 参数 | 作用 |
+| Parameter | What it does |
 |---|---|
-| `gamma_gun` | 电子枪伽马（整体对比度） |
-| `sigma0` / `sigma_h` | 电子束垂直 / 水平宽度（扫描线粗细 / 水平柔和度） |
-| `k_sc` / `alpha_sc` | 亮部变粗的程度 / 曲线形状 |
-| `scan_gamma` | 扫描线对比度：加深暗处扫描线之间的缝。这是审美参数，不属于物理链；亮行被空间电荷填满的缝不受影响 |
-| `mask_type` / `mask_pitch` / `mask_strength` | 掩膜类型 / 间距（输出像素）/ 强度 |
-| `e_sat` / `brightness` | 荧光粉饱和拐点 / 亮度 |
-| `persist_r/g/b` | 各通道余辉：每帧的光在 60 Hz 下一帧还剩的比例（按实际刷新率换算），拖尾叠加在新画面上 |
-| `halo_weight` / `halo_spread` | 玻璃光晕强度 / 半径 |
-| `vignette` / `d_gun` / `k_edge` | 边缘暗角 / 偏转距离 / 边缘光斑拉长 |
-| `scan_mode` / `interlace_off` | 逐行、隔行或自动 / 隔行时另一场的亮度（感知参数，控制闪烁程度） |
+| `gamma_gun` | Electron-gun gamma (overall contrast) |
+| `sigma0` / `sigma_h` | Vertical / horizontal beam width (scanline thickness / horizontal softness) |
+| `k_sc` / `alpha_sc` | How much bright areas fatten / the shape of that curve |
+| `scan_gamma` | Scanline contrast: deepens the gaps between dark scanlines. An aesthetic control, not part of the physical chain; gaps that bright lines fill through space charge are left alone |
+| `mask_type` / `mask_pitch` / `mask_strength` | Mask type / pitch (output pixels) / strength |
+| `e_sat` / `brightness` | Phosphor saturation knee / brightness |
+| `persist_r/g/b` | Per-channel persistence: the share of a frame's light still glowing one 60 Hz frame later (rescaled to the real refresh rate); the trail adds to the new picture |
+| `halo_weight` / `halo_spread` | Glass halation strength / radius |
+| `vignette` / `d_gun` / `k_edge` | Edge falloff / deflection distance / spot elongation at the edges |
+| `scan_mode` / `interlace_off` | Progressive, interlaced or auto / brightness of the other field when interlaced (perceptual, sets the amount of flicker) |
 
-**布局（`Layout:`）**
+**Layout (`Layout:`)**
 
-| 参数 | 作用 |
+| Parameter | What it does |
 |---|---|
-| `DC_SCALE` / `DC_POS_X` / `DC_POS_Y` | 屏幕大小 / 中心位置 |
-| `DC_ASPECT` | 画面宽高比 |
-| `DC_CURVE_X` / `DC_CURVE_Y` | 荧光屏沿宽度 / 沿高度的弯曲（分别让上下边、左右边变弯） |
-| `DC_CORNER` | 屏幕圆角 |
-| `DC_BG_ON` / `DC_FG_ON` | 背景 / 前景图开关 |
+| `DC_SCALE` / `DC_POS_X` / `DC_POS_Y` | Screen size / centre position |
+| `DC_ASPECT` | Picture aspect ratio |
+| `DC_CURVE_X` / `DC_CURVE_Y` | Faceplate curvature across the width / height (bows the top and bottom / left and right edges) |
+| `DC_CORNER` | Screen corner radius |
+| `DC_BG_ON` / `DC_FG_ON` | Background / foreground image on or off |
 
-**光照（`Light:`）**
+**Lighting (`Light:`)**
 
-| 参数 | 作用 |
+| Parameter | What it does |
 |---|---|
-| `DC_ROOM_LIGHT` | 房间亮度：0 关灯，0.5 台灯，1 白天 |
-| `DC_ROOM_TYPE` / `DC_ROOM_TEMP` | 光源类型（自定义色温、白炽灯、荧光灯、日光）/ 自定义色温 |
-| `DC_SPILL` | 电视画面照亮周围的强度 |
-| `DC_GLASS_LIFT` | 房间光在屏幕玻璃上的泛白 |
+| `DC_ROOM_LIGHT` | Room light: 0 lights off, 0.5 a lamp, 1 daylight |
+| `DC_ROOM_TYPE` / `DC_ROOM_TEMP` | Light source (custom colour temperature, bulb, fluorescent, daylight) / custom colour temperature |
+| `DC_SPILL` | How strongly the picture lights its surroundings |
+| `DC_GLASS_LIFT` | Room light reflected by the screen glass |
 
-### 边框外观
+### Bezel look
 
-边框的形状、材质和光照是编译期参数，默认值都在 `decoupled/dc-composite.inc` 里。
-做一种新外观，只需写一个包装文件，覆盖想改的参数，再 include 它：
+The bezel's shape, material and lighting are compile-time parameters, with defaults in `decoupled/dc-composite.inc`.
+For a new look, write a small wrapper that overrides what you want to change and includes it:
 
 ```glsl
 #version 450
-#define BZL_COLOR_VAL   0.73     // 银色塑料
-#define LIGHT_ANGLE     135.0    // 光从左上来
-#define GLOSS_STR       0.40     // 柜面倒影
+#define BZL_COLOR_VAL   0.73     // silver plastic
+#define LIGHT_ANGLE     135.0    // light from the upper left
+#define GLOSS_STR       0.40     // reflection on the cabinet top
 #include "dc-composite.inc"
 ```
 
-| 分组 | 参数 |
+| Group | Parameters |
 |---|---|
-| 尺寸 | `BZL_WIDTH(_X)`、`FRM_WIDTH(_X)`、`BZL_OUTER_CORNER`、`FRM_OUTER_CORNER` |
-| 材质 | `BZL_COLOR_HUE/SAT/VAL`、`BZL_NOISE`、`BZL_GLOSS`、`BZL_SHINE`、`FRM_COLOR_*` |
-| 光照 | `LIGHT_ANGLE`、`LIGHT_ELEV`、`AMBIENT`、`BZL_SLOPE`、`LIGHT_GRAD_X/Y` |
-| 圆角 | `LIP_WIDTH`、`LIP_ROLL`、`BZL_EDGE_W`、`FRM_EDGE_W`、`FRM_EDGE_ROLL` |
-| 斜接缝 | `CORNER_FADE`、`CREASE_W_IN/OUT`、`CREASE_STR` |
-| 屏幕倒影 | `REFL_STR`、`REFL_FALLOFF`、`REFL_BLUR`、`REFL_CORNER` |
-| 柜面倒影 | `GLOSS_STR`、`GLOSS_MIRROR_Y`、`GLOSS_STRETCH`、`GLOSS_BLUR` |
+| Size | `BZL_WIDTH(_X)`, `FRM_WIDTH(_X)`, `BZL_OUTER_CORNER`, `FRM_OUTER_CORNER` |
+| Material | `BZL_COLOR_HUE/SAT/VAL`, `BZL_NOISE`, `BZL_GLOSS`, `BZL_SHINE`, `FRM_COLOR_*` |
+| Light | `LIGHT_ANGLE`, `LIGHT_ELEV`, `AMBIENT`, `BZL_SLOPE`, `LIGHT_GRAD_X/Y` |
+| Rounded edges | `LIP_WIDTH`, `LIP_ROLL`, `BZL_EDGE_W`, `FRM_EDGE_W`, `FRM_EDGE_ROLL` |
+| Miter seams | `CORNER_FADE`, `CREASE_W_IN/OUT`, `CREASE_STR` |
+| Screen reflection | `REFL_STR`, `REFL_FALLOFF`, `REFL_BLUR`, `REFL_CORNER` |
+| Glossy surfaces | `GLOSS_STR`, `GLOSS_MIRROR_Y`, `GLOSS_STRETCH`, `GLOSS_BLUR` |
 
-长度以显像管高度为单位，角度以度为单位。每个参数的含义写在 `dc-composite.inc` 的注释里。最方便的做法是在 CRT Studio 里调好再导出。
+Lengths are in tube heights, angles in degrees. Each parameter is described in the comments of `dc-composite.inc`.
+The easiest way is to tune in CRT Studio and export.
 
-## 工作原理
+## How it works
 
 ```
-游戏画面
- │ 01 linearize      信号解码，电子枪响应 → 线性束流
- │ 02 beam-v         垂直方向的电子束卷积（能量守恒），逐行 / 隔行扫描
- │ 03 beam-h         水平方向的电子束卷积
- │ 04 phosphor       荧光粉掩膜与饱和
- │ 05 persist        荧光粉余辉
- │ 06–08 halo        玻璃散射光晕（1/4 分辨率，可分离高斯）
+game frame
+ │ 01 linearize      signal decode, gun response → linear beam current
+ │ 02 beam-v         vertical beam convolution (energy-conserving), progressive / interlaced scan
+ │ 03 beam-h         horizontal beam convolution
+ │ 04 phosphor       phosphor mask and saturation
+ │ 05 persist        phosphor persistence
+ │ 06–08 halo        glass halation (1/4 resolution, separable Gaussian)
  ▼
- │ dc-crt-physics    把画面按屏幕几何弯曲、定位
- │ dc-composite      边框、屏幕倒影、背景、场景光照
- │ dc-foreground     （可选）盖在玻璃前面的图层
+ │ dc-crt-physics    curve and place the picture by the screen layout
+ │ dc-composite      bezel, screen reflection, background, scene lighting
+ │ dc-foreground     (optional) a layer in front of the glass
  ▼
-输出
+output
 ```
 
-**屏幕几何约定。** CRT、边框和倒影只共享一组参数：屏幕的位置、大小、宽高比、曲率和圆角，定义在 `decoupled/dc-screen-layout.inc` 里。三者读同一组参数，所以总是对齐的，替换其中任何一部分都不影响其他部分。
+**Shared screen layout.** The CRT, the bezel and the reflection share only one set of parameters: the screen's
+position, size, aspect ratio, curvature and corner radius, defined in `decoupled/dc-screen-layout.inc`. All three
+read the same values, so they always line up, and any of them can be replaced without touching the others.
 
-**荧光屏曲面。** 荧光屏被看作一块球面玻璃，电子束按偏转角均匀扫过。从正前方看，画面中心略微放大，边缘中点固定，四角向内收。这个映射正反两个方向都有解析解。
+**Faceplate.** The faceplate is treated as a patch of a sphere that the beam sweeps evenly in deflection angle. Seen
+from the front, the centre is slightly magnified, the edge midpoints stay fixed and the corners pull in. The mapping
+has a closed form in both directions.
 
-**边框。** 从显像管往外看，边框是一条截面轮廓：
-1. 黑边；
-2. 卷向管内的内沿；
-3. 四个斜面（以直线斜接）；
-4. 圆角过渡的外沿；
-5. 平框；
-6. 平框外沿。
+**Bezel.** Seen from the tube outward, the bezel is a cross-section profile:
+1. the black gap;
+2. a lip rolling down into the tube;
+3. four sloped faces meeting at straight miters;
+4. a rounded outer edge;
+5. the flat frame;
+6. the frame's outer edge.
 
-每一段的法线都由几何决定，用同一个光源计算漫反射和高光。斜接缝按两个相邻斜面中间方向的法线受光。
+Each part's normal comes from its geometry, and one light gives diffuse shading and sheen. The miter seams are lit by
+the normal halfway between the two faces they join.
 
-**场景光照。** 所有画出来的东西都在线性空间里乘以房间光，再加上电视溢光：
-- 边框、平框、背景图都受光；
-- 溢光的颜色取自画面的模糊 mip，所以预设开启了 `mipmap_input`；
-- 背景图的 `SpillMask` 贴图标出每个像素接收多少溢光（R 通道）和哪里是会映出画面的光面（G 通道）。
+**Scene lighting.** Everything drawn is multiplied in linear light by the room light, plus the TV's spill:
+- bezel, frame and background art are all lit;
+- the spill colour comes from blurred mips of the picture, so the presets enable `mipmap_input`;
+- the background's `SpillMask` texture says how much spill each pixel receives (R) and where the glossy, picture-
+  reflecting surfaces are (G).
 
-## 工具
+## Tools
 
-**CRT Studio**（`tools/crt-studio.html`）：直接用浏览器打开即可。
+**CRT Studio** (`tools/crt-studio.html`): open it directly in a browser.
 
 ![CRT Studio](docs/screenshots/crt-studio.jpg)
 
-- **管线复刻**：用 WebGL 完整复刻上面的管线，载入一张游戏截图（拖进窗口即可）就能实时调所有参数。
-- **导出 / 导入**：
-  - 导出一次给出全部 `#define` 和 `DC_*` 值；
-  - 也可以把已有的包装文件或预设粘贴回来。
-- **图层栈**：可以叠加背景、前景图片和溢光遮罩，预览完整场景。
-- **看像素**：悬停放大镜和 1:1 全屏用来检查真实像素；预览窗口经过低通处理，不会出现摩尔纹。
+- **Pipeline mirror**: a WebGL copy of the pipeline above. Load a game screenshot (or drop it onto the window) and
+  tune every parameter live.
+- **Export / import**:
+  - export gives every `#define` and `DC_*` value at once;
+  - an existing wrapper or preset can be pasted back in.
+- **Layer stack**: background and foreground images and spill masks, to preview a full scene.
+- **Pixel check**: a hover magnifier and 1:1 fullscreen show the real pixels; the preview pane is low-passed so it
+  shows no moiré.
 
-**其他工具**
+**Other tools**
 
-| 文件 | 用途 |
+| File | Purpose |
 |---|---|
-| `tools/slang-check.py` | 按 RetroArch 的方式编译检查 `.slang` / `.slangp`，需要 [glslang](https://github.com/KhronosGroup/glslang/releases)（`--glslang`、`GLSLANG` 环境变量或 PATH） |
-| `tools/ra-native.py` | 从放大后的 RetroArch 截图还原原生分辨率的帧，作为 CRT Studio 的输入 |
+| `tools/slang-check.py` | Compile-checks `.slang` / `.slangp` the way RetroArch does; needs [glslang](https://github.com/KhronosGroup/glslang/releases) (`--glslang`, the `GLSLANG` environment variable, or PATH) |
+| `tools/ra-native.py` | Recovers a native-resolution frame from an upscaled RetroArch screenshot, as input for CRT Studio |
 
-## 场景美术
+## Scene art
 
-客厅场景由 `art/` 下的 Python 脚本程序化绘制。依赖：
-- `skia-python`、`numpy`、`scipy`、`Pillow`；
-- Noto Sans / Serif CJK SC 字体。
+The living room is drawn procedurally by the Python scripts in `art/`. Requirements:
+- `skia-python`, `numpy`, `scipy`, `Pillow`;
+- the Noto Sans / Serif CJK SC fonts.
 
 ```sh
 cd art
-python make_tv.py       # 电视外壳（屏幕和边框留给着色器）
-python make_bg.py       # 墙面、插座、电视柜、VCD
-python make_props.py    # 柜面上的遥控器
-python compose.py       # 合成预览 → art/out/
-python export_ra.py     # 生成 RetroArch 贴图（背景 + 溢光遮罩）
-python dc_params.py     # 生成 dc-composite-xinghui.slang 和预设的布局参数
+python make_tv.py       # TV housing (the screen and bezel are left to the shader)
+python make_bg.py       # wall, socket, TV cabinet, VCD player
+python make_props.py    # the remote on the cabinet top
+python compose.py       # preview composite -> art/out/
+python export_ra.py     # RetroArch textures (background + spill mask)
+python dc_params.py     # dc-composite-xinghui.slang and the preset's layout values
 ```
 
-- **共享几何**：屏幕几何只在 `common.py` 中定义一份，美术和着色器参数都从它派生。
-- **真实尺寸**：所有道具都按真实尺寸和柜面透视摆放（电视面上为 34 px/cm）。
-- **虚构品牌**：场景里的品牌和人名均为虚构。
+- **Shared geometry**: the screen geometry is defined once in `common.py`; both the art and the shader parameters
+  are derived from it.
+- **Real sizes**: every prop is placed at its real size in the cabinet's perspective (34 px/cm at the TV face).
+- **Invented brands**: the brands and names in the scene are fictional.
 
-## 目录结构
+## Layout
 
 ```
-crt-decoupled-*.slangp   预设
-crt-physics/             物理 CRT（pass 01–08）
-decoupled/               屏幕几何、边框与场景合成、贴图
-tools/                   CRT Studio 与命令行工具
-art/                     场景美术脚本
-docs/                    截图与对比图
+crt-decoupled-*.slangp   presets
+crt-physics/             physical CRT (passes 01–08)
+decoupled/               screen layout, bezel and scene composite, textures
+tools/                   CRT Studio and command-line tools
+art/                     scene art scripts
+docs/                    screenshots and comparisons
 ```
 
-## 致谢
+## Acknowledgements
 
-- [libretro](https://www.libretro.com/) 的 RetroArch 和 slang 着色器格式
-- Duimon 的设备美术，场景构图方式受其启发
+- [libretro](https://www.libretro.com/)'s RetroArch and the slang shader format
+- Duimon's device art, which inspired the way the scene is composed
 
-## 许可证
+## License
 
-- **代码**（着色器、预设、工具、`art/` 下的脚本）：[MIT](LICENSE)
-- **美术**（客厅场景贴图、脚本生成的图像、截图中的房间与边框）：[CC BY 4.0](LICENSE-ART.md)，使用时注明出处即可
+- **Code** (shaders, presets, tools, the scripts in `art/`): [MIT](LICENSE)
+- **Art** (the living-room textures, images generated by the scripts, the room and bezel in the screenshots):
+  [CC BY 4.0](LICENSE-ART.md), just give credit
 
-截图中的游戏画面（*Contra*、*恶魔城 月下夜想曲*）版权归各自权利人所有，不在上述许可范围内。
+The game pictures in the screenshots (*Contra*, *Akumajō Dracula X: Gekka no Yasōkyoku*) are © their respective
+owners and not covered by these licenses.
